@@ -2,13 +2,34 @@
 
 import { useStore } from "@/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { format, isToday, parseISO } from "date-fns";
+import { format, isToday, parseISO, subDays, subYears, startOfMonth, subMonths, isAfter, isBefore, endOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
-import { DollarSign, ShoppingBag, CreditCard, AlertTriangle, Package, Zap, ArrowRightLeft, TrendingUp } from "lucide-react";
+import { DollarSign, ShoppingBag, CreditCard, AlertTriangle, Package, Zap, ArrowRightLeft, TrendingUp, Calendar as CalendarIcon, ChevronDown } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
+} from "@/components/ui/dropdown-menu";
 import { useEffect, useState } from "react";
+
+type DateRangeFilter =
+  | "today"
+  | "7days"
+  | "28days"
+  | "90days"
+  | "365days"
+  | "all_time"
+  | "prev_year"
+  | "prev_prev_year"
+  | "prev_month"
+  | "prev_prev_month"
+  | "custom";
 
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
@@ -16,8 +37,9 @@ export default function Dashboard() {
   const customers = useStore((state) => state.customers);
   const products = useStore((state) => state.products);
   const store = useStore((state) => state.currentStore);
-
   const movements = useStore((state) => state.movements);
+
+  const [dateFilter, setDateFilter] = useState<DateRangeFilter>("today");
 
   // Prevent hydration mismatch with Zustand persist
   useEffect(() => {
@@ -58,18 +80,133 @@ export default function Dashboard() {
     .sort((a, b) => b.qty - a.qty)
     .slice(0, 5);
 
-  // Ventas del Día (Line Chart)
-  const hourlySales = Array.from({ length: 15 }, (_, i) => ({
-    hour: `${i + 6}:00`,
-    total: 0
-  }));
+  // Helper function to get the current selected range labels and filter sales
+  const getFilteredSales = () => {
+    const now = new Date();
+    let label = "Hoy";
+    let filteredSales = sales;
+    let formatStr = "HH:mm";
+    let groupBy = "hour";
 
-  todaysSales.forEach(sale => {
-    const d = parseISO(sale.created_at);
-    const hourFormat = `${d.getHours()}:00`;
-    const bin = hourlySales.find(h => h.hour === hourFormat);
-    if (bin) bin.total += sale.total_amount;
-  });
+    switch (dateFilter) {
+      case "today":
+        filteredSales = sales.filter(s => isToday(parseISO(s.created_at)));
+        label = "Hoy";
+        groupBy = "hour";
+        break;
+      case "7days":
+        filteredSales = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 7)));
+        label = "Últimos 7 días";
+        groupBy = "day";
+        break;
+      case "28days":
+        filteredSales = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 28)));
+        label = "Últimos 28 días";
+        groupBy = "day";
+        break;
+      case "90days":
+        filteredSales = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 90)));
+        label = "Últimos 90 días";
+        groupBy = "week";
+        break;
+      case "365days":
+        filteredSales = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 365)));
+        label = "Últimos 365 días";
+        groupBy = "month";
+        break;
+      case "prev_year":
+        filteredSales = sales.filter(s => {
+          const d = parseISO(s.created_at);
+          return d.getFullYear() === now.getFullYear() - 1;
+        });
+        label = `${now.getFullYear() - 1}`;
+        groupBy = "month";
+        break;
+      case "prev_prev_year":
+        filteredSales = sales.filter(s => {
+          const d = parseISO(s.created_at);
+          return d.getFullYear() === now.getFullYear() - 2;
+        });
+        label = `${now.getFullYear() - 2}`;
+        groupBy = "month";
+        break;
+      case "prev_month":
+        const prevMonth = subMonths(startOfMonth(now), 1);
+        filteredSales = sales.filter(s => {
+          const d = parseISO(s.created_at);
+          return d.getMonth() === prevMonth.getMonth() && d.getFullYear() === prevMonth.getFullYear();
+        });
+        label = format(prevMonth, "MMMM yyyy", { locale: es });
+        groupBy = "day";
+        break;
+      case "prev_prev_month":
+        const prevPrevMonth = subMonths(startOfMonth(now), 2);
+        filteredSales = sales.filter(s => {
+          const d = parseISO(s.created_at);
+          return d.getMonth() === prevPrevMonth.getMonth() && d.getFullYear() === prevPrevMonth.getFullYear();
+        });
+        label = format(prevPrevMonth, "MMMM yyyy", { locale: es });
+        groupBy = "day";
+        break;
+      case "all_time":
+        label = "Desde siempre";
+        groupBy = "month";
+        break;
+      case "custom":
+        label = "Personalizado";
+        groupBy = "day"; // Simple fallback
+        break;
+    }
+
+    return { filteredSales, label, groupBy };
+  };
+
+  const { filteredSales, label: filterLabel, groupBy } = getFilteredSales();
+
+  // Generate Chart Data based on grouping
+  const generateChartData = () => {
+    let data: { time: string, total: number }[] = [];
+
+    if (groupBy === "hour") {
+      data = Array.from({ length: 15 }, (_, i) => ({ time: `${i + 6}:00`, total: 0 }));
+      filteredSales.forEach(sale => {
+        const d = parseISO(sale.created_at);
+        const hourFormat = `${d.getHours()}:00`;
+        const bin = data.find(h => h.time === hourFormat);
+        if (bin) bin.total += sale.total_amount;
+      });
+    } else if (groupBy === "day") {
+      // Group by distinct days found in filtered sales, sorted
+      const daysMap = new Map<string, number>();
+      filteredSales.forEach(sale => {
+        const d = parseISO(sale.created_at);
+        const dayFormat = format(d, "dd MMM", { locale: es });
+        daysMap.set(dayFormat, (daysMap.get(dayFormat) || 0) + sale.total_amount);
+      });
+      data = Array.from(daysMap, ([time, total]) => ({ time, total })).reverse();
+    } else if (groupBy === "week") {
+      const weeksMap = new Map<string, number>();
+      filteredSales.forEach(sale => {
+        const d = parseISO(sale.created_at);
+        const weekFormat = `Sem ${format(d, "w", { locale: es })}`;
+        weeksMap.set(weekFormat, (weeksMap.get(weekFormat) || 0) + sale.total_amount);
+      });
+      data = Array.from(weeksMap, ([time, total]) => ({ time, total })).reverse();
+    } else if (groupBy === "month") {
+      const monthsMap = new Map<string, number>();
+      filteredSales.forEach(sale => {
+        const d = parseISO(sale.created_at);
+        const monthFormat = format(d, "MMM yy", { locale: es });
+        monthsMap.set(monthFormat, (monthsMap.get(monthFormat) || 0) + sale.total_amount);
+      });
+      // Try to ensure chronological sort or just reverse insertion
+      data = Array.from(monthsMap, ([time, total]) => ({ time, total })).reverse();
+    }
+
+    return data;
+  };
+
+  const chartData = generateChartData();
 
   return (
     <div className="flex-1 space-y-4 sm:space-y-6 p-4 sm:p-8 pt-4 sm:pt-6 overflow-hidden">
@@ -137,16 +274,42 @@ export default function Dashboard() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="col-span-4 shadow-sm">
-          <CardHeader>
-            <CardTitle>Ventas del Día</CardTitle>
-            <CardDescription>Flujo de ingresos por hora</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <CardTitle>Resumen de Ventas</CardTitle>
+              <CardDescription>Flujo de ingresos en el período seleccionado</CardDescription>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 gap-1">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline-block capitalize">{filterLabel}</span>
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[200px]">
+                <DropdownMenuItem onClick={() => setDateFilter("today")}>Hoy</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter("7days")}>Últimos 7 días</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter("28days")}>Últimos 28 días</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter("90days")}>Últimos 90 días</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter("365days")}>Últimos 365 días</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter("all_time")}>Desde siempre</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setDateFilter("prev_year")}>{new Date().getFullYear() - 1}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter("prev_prev_year")}>{new Date().getFullYear() - 2}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter("prev_month")}>{format(subMonths(new Date(), 1), "MMMM", { locale: es })}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDateFilter("prev_prev_month")}>{format(subMonths(new Date(), 2), "MMMM", { locale: es })}</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setDateFilter("custom")} disabled>Personalizado (Próximamente)</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </CardHeader>
           <CardContent className="pl-0 border-t border-slate-100 pt-4">
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={hourlySales} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <BarChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                 <XAxis
-                  dataKey="hour"
+                  dataKey="time"
                   stroke="#64748b"
                   fontSize={12}
                   tickLine={false}
@@ -164,17 +327,15 @@ export default function Dashboard() {
                 <Tooltip
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                   formatter={(value: any) => [`S/ ${value.toFixed(2)}`, 'Ventas']}
-                  labelStyle={{ color: '#0f172a', fontWeight: 'bold', marginBottom: '4px' }}
+                  labelStyle={{ color: '#0f172a', fontWeight: 'bold', marginBottom: '4px', textTransform: 'capitalize' }}
                 />
-                <Line
-                  type="monotone"
+                <Bar
                   dataKey="total"
-                  stroke="#3b82f6"
-                  strokeWidth={3}
-                  dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }}
-                  activeDot={{ r: 6, strokeWidth: 0 }}
+                  fill="#3b82f6"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={60}
                 />
-              </LineChart>
+              </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
@@ -253,12 +414,19 @@ export default function Dashboard() {
                     <TableCell>
                       <Badge variant="outline" className={`
                         ${mov.movement_type === 'AUTOMATIZACION' ? 'border-purple-200 bg-purple-50 text-purple-700' : ''}
-                        ${mov.movement_type === 'MANUAL' ? 'border-blue-200 bg-blue-50 text-blue-700' : ''}
+                        ${mov.movement_type === 'MANUAL' ? (mov.quantity_changed > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700') : ''}
                         ${mov.movement_type === 'COMPRA' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : ''}
-                        ${mov.movement_type === 'AJUSTE' ? 'border-orange-200 bg-orange-50 text-orange-700' : ''}
+                        ${mov.movement_type === 'AJUSTE' ? (mov.quantity_changed > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-orange-200 bg-orange-50 text-orange-700') : ''}
                         ${mov.movement_type === 'CARGA_INICIAL' ? 'border-slate-200 bg-slate-50 text-slate-700' : ''}
                       `}>
-                        {mov.movement_type}
+                        {mov.movement_type === 'AUTOMATIZACION' && 'BOT Automatización'}
+                        {mov.movement_type === 'MANUAL' && (mov.quantity_changed > 0 ? 'Ingreso Manual' : 'Venta Manual')}
+                        {mov.movement_type === 'AJUSTE' && (mov.quantity_changed > 0 ? 'Ajuste Positivo' : 'Ajuste Negativo')}
+                        {mov.movement_type === 'COMPRA' && 'Ingreso Proveedor'}
+                        {mov.movement_type === 'CARGA_INICIAL' && 'Carga Inicial'}
+                        {![
+                          'AUTOMATIZACION', 'MANUAL', 'AJUSTE', 'COMPRA', 'CARGA_INICIAL'
+                        ].includes(mov.movement_type) && mov.movement_type}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">

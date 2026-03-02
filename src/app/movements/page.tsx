@@ -23,20 +23,26 @@ export default function MovementsPage() {
 
     const getProductName = (id: string) => products.find(p => p.id === id)?.name || "Producto Desconocido";
 
-    const getMovementConfig = (type: MovementType) => {
-        switch (type) {
+    const getMovementConfig = (movement: any) => {
+        switch (movement.movement_type) {
             case "AUTOMATIZACION":
-                return { color: "bg-purple-100 text-purple-700", icon: <Zap className="h-3 w-3 mr-1" />, label: "BOT (n8n/Telegram)" };
+                return { color: "bg-purple-100 text-purple-700", icon: <Zap className="h-3 w-3 mr-1" />, label: "BOT Automatización" };
             case "MANUAL":
+                if (movement.quantity_changed > 0) {
+                    return { color: "bg-emerald-100 text-emerald-700", icon: <ArrowUpRight className="h-3 w-3 mr-1" />, label: "Ingreso Manual" };
+                }
                 return { color: "bg-blue-100 text-blue-700", icon: <ShoppingBag className="h-3 w-3 mr-1" />, label: "Venta Manual" };
             case "COMPRA":
                 return { color: "bg-green-100 text-green-700", icon: <Truck className="h-3 w-3 mr-1" />, label: "Ingreso Proveedor" };
             case "AJUSTE":
-                return { color: "bg-orange-100 text-orange-700", icon: <Edit3 className="h-3 w-3 mr-1" />, label: "Ajuste de Merma" };
+                if (movement.quantity_changed > 0) {
+                    return { color: "bg-emerald-100 text-emerald-700", icon: <ArrowUpRight className="h-3 w-3 mr-1" />, label: "Ajuste Positivo" };
+                }
+                return { color: "bg-orange-100 text-orange-700", icon: <Edit3 className="h-3 w-3 mr-1" />, label: "Ajuste Negativo/Merma" };
             case "CARGA_INICIAL":
                 return { color: "bg-slate-100 text-slate-700", icon: <History className="h-3 w-3 mr-1" />, label: "Carga Inicial" };
             default:
-                return { color: "bg-slate-100 text-slate-700", icon: <History className="h-3 w-3 mr-1" />, label: type };
+                return { color: "bg-slate-100 text-slate-700", icon: <History className="h-3 w-3 mr-1" />, label: movement.movement_type };
         }
     };
 
@@ -85,7 +91,7 @@ export default function MovementsPage() {
                                 </TableRow>
                             ) : (
                                 filteredMovements.map((movement) => {
-                                    const config = getMovementConfig(movement.movement_type);
+                                    const config = getMovementConfig(movement);
                                     const isPositive = movement.quantity_changed > 0;
                                     const isNegative = movement.quantity_changed < 0;
 
