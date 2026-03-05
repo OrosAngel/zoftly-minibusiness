@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Zoftly - Gestión para Bodegas",
+  title: "Zoftly - Gestión para Bodega",
   description: "Plataforma B2B para la digitalización de bodegas.",
 };
 
