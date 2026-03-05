@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Download, FileSpreadsheet, FileText, Calendar, Filter } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { format, parseISO } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { format, parseISO, isSameDay, isSameWeek, isSameMonth, isSameQuarter, isSameYear } from "date-fns";
 import { es } from "date-fns/locale";
 import ExcelJS from "exceljs";
 import { toast } from "sonner";
@@ -19,12 +20,27 @@ export default function ReportsPage() {
     const products = useStore((state) => state.products);
     const customers = useStore((state) => state.customers);
     const [search, setSearch] = useState("");
+    const [timeFilter, setTimeFilter] = useState("all");
 
     useEffect(() => {
         setMounted(true);
     }, []);
 
-    if (!mounted) return <div className="p-8">Cargando reportes...</div>;
+    // Filter sales based on selected timeframe
+    const filteredSales = sales.filter(sale => {
+        if (timeFilter === "all") return true;
+        const saleDate = parseISO(sale.created_at);
+        const now = new Date();
+        if (timeFilter === "day") return isSameDay(saleDate, now);
+        if (timeFilter === "week") return isSameWeek(saleDate, now, { weekStartsOn: 1 });
+        if (timeFilter === "month") return isSameMonth(saleDate, now);
+        if (timeFilter === "quarter") return isSameQuarter(saleDate, now);
+        if (timeFilter === "year") return isSameYear(saleDate, now);
+        return true;
+    });
+
+
+
 
     const exportCierreCaja = async () => {
         try {
@@ -49,7 +65,7 @@ export default function ReportsPage() {
             };
 
             // Add data
-            sales.forEach(sale => {
+            filteredSales.forEach(sale => {
                 let customerName = "Público General";
                 if (sale.customer_id) {
                     const c = customers.find(x => x.id === sale.customer_id);
@@ -134,16 +150,34 @@ export default function ReportsPage() {
         }
     }
 
-    const recentSales = sales.slice(0, 10);
+    if (!mounted) return <div className="p-8">Cargando reportes...</div>;
+
+    const recentSales = filteredSales.slice(0, 10);
 
     return (
         <div className="flex-1 space-y-4 sm:space-y-6 p-4 sm:p-8 pt-4 sm:pt-6 max-w-7xl mx-auto overflow-hidden">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0">
                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Reportes y Exportación</h2>
+                <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 text-slate-500" />
+                    <Select value={timeFilter} onValueChange={setTimeFilter}>
+                        <SelectTrigger className="w-[180px] bg-white">
+                            <SelectValue placeholder="Filtrar por tiempo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todo el Historial</SelectItem>
+                            <SelectItem value="day">Hoy</SelectItem>
+                            <SelectItem value="week">Esta Semana</SelectItem>
+                            <SelectItem value="month">Este Mes</SelectItem>
+                            <SelectItem value="quarter">Este Trimestre</SelectItem>
+                            <SelectItem value="year">Este Año</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                <Card className="border-blue-100 shadow-sm transition-all hover:shadow-md hover:border-blue-300">
+                <Card className="border-blue-100 shadow-sm transition-all hover:shadow-md hover:border-blue-300 flex flex-col justify-between">
                     <CardHeader className="pb-3">
                         <CardTitle className="flex items-center text-blue-800">
                             <FileSpreadsheet className="mr-2 h-5 w-5 text-blue-600" />
@@ -153,14 +187,14 @@ export default function ReportsPage() {
                             Lista detallada de las ventas realizadas con fechas, métodos de pago y totales.
                         </CardDescription>
                     </CardHeader>
-                    <CardFooter>
+                    <CardFooter className="mt-auto">
                         <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={exportCierreCaja}>
                             <Download className="mr-2 h-4 w-4" /> Exportar a Excel
                         </Button>
                     </CardFooter>
                 </Card>
 
-                <Card className="border-emerald-100 shadow-sm transition-all hover:shadow-md hover:border-emerald-300">
+                <Card className="border-emerald-100 shadow-sm transition-all hover:shadow-md hover:border-emerald-300 flex flex-col justify-between">
                     <CardHeader className="pb-3">
                         <CardTitle className="flex items-center text-emerald-800">
                             <FileText className="mr-2 h-5 w-5 text-emerald-600" />
@@ -170,7 +204,7 @@ export default function ReportsPage() {
                             Cálculo del valor total de la mercadería almacenada en base al costo de compra y stock actual.
                         </CardDescription>
                     </CardHeader>
-                    <CardFooter>
+                    <CardFooter className="mt-auto">
                         <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={exportInventarioValorizado}>
                             <Download className="mr-2 h-4 w-4" /> Exportar a Excel
                         </Button>
@@ -179,8 +213,8 @@ export default function ReportsPage() {
             </div>
 
             <div className="mt-8 border-t border-slate-200 pt-8 overflow-hidden flex flex-col">
-                <h3 className="text-xl font-bold mb-6 text-slate-800 flex items-center">
-                    <Calendar className="mr-2 h-5 w-5 text-slate-500" /> Vista Previa: Últimas Ventas
+                <h3 className="text-xl font-bold mb-6 text-slate-800 flex items-center justify-between">
+                    <span className="flex items-center"><Calendar className="mr-2 h-5 w-5 text-slate-500" /> Vista Previa: Últimas Ventas ({filteredSales.length})</span>
                 </h3>
 
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">

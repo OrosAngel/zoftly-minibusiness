@@ -21,8 +21,8 @@ export default function CustomersPage() {
     const [search, setSearch] = useState("");
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-    const [newCustomer, setNewCustomer] = useState({ first_name: '', last_name: '', phone: '', description: '' });
-    const [currentCustomer, setCurrentCustomer] = useState({ id: '', first_name: '', last_name: '', phone: '', description: '' });
+    const [newCustomer, setNewCustomer] = useState({ first_name: '', last_name: '', phone: '', description: '', total_debt: 0 });
+    const [currentCustomer, setCurrentCustomer] = useState({ id: '', first_name: '', last_name: '', phone: '', description: '', total_debt: 0 });
 
     const formatPhoneNumber = (value: string) => {
         const cleaned = ('' + value).replace(/\D/g, '').substring(0, 9);
@@ -67,7 +67,7 @@ export default function CustomersPage() {
             await addCustomer(newCustomer);
             toast.success("Cliente creado exitosamente");
             setIsAddDialogOpen(false);
-            setNewCustomer({ first_name: '', last_name: '', phone: '', description: '' });
+            setNewCustomer({ first_name: '', last_name: '', phone: '', description: '', total_debt: 0 });
         } catch (error) {
             toast.error("Error de red", { description: "No se pudo crear el cliente." });
         }
@@ -84,7 +84,8 @@ export default function CustomersPage() {
                 first_name: currentCustomer.first_name,
                 last_name: currentCustomer.last_name,
                 phone: currentCustomer.phone,
-                description: currentCustomer.description
+                description: currentCustomer.description,
+                total_debt: currentCustomer.total_debt
             });
             toast.success("Cliente actualizado exitosamente");
             setIsEditDialogOpen(false);
@@ -99,7 +100,8 @@ export default function CustomersPage() {
             first_name: customer.first_name || '',
             last_name: customer.last_name || '',
             phone: customer.phone || '',
-            description: customer.description || ''
+            description: customer.description || '',
+            total_debt: customer.total_debt || 0
         });
         setIsEditDialogOpen(true);
     };
@@ -228,6 +230,22 @@ export default function CustomersPage() {
                                 maxLength={11}
                             />
                         </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="total_debt" className="text-right font-medium">Deuda (Opcional)</Label>
+                            <div className="col-span-3 relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">S/</span>
+                                <Input
+                                    id="total_debt"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={newCustomer.total_debt}
+                                    onChange={(e: any) => setNewCustomer({ ...newCustomer, total_debt: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
+                                    className="pl-8"
+                                    placeholder="0.00"
+                                />
+                            </div>
+                        </div>
                         <div className="grid grid-cols-4 gap-4 pt-2">
                             <Label htmlFor="description" className="text-right mt-2 font-medium">Descripción</Label>
                             <Textarea
@@ -283,6 +301,21 @@ export default function CustomersPage() {
                                 className="col-span-3"
                                 maxLength={11}
                             />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-total_debt" className="text-right font-medium">Deuda</Label>
+                            <div className="col-span-3 relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">S/</span>
+                                <Input
+                                    id="edit-total_debt"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={currentCustomer.total_debt}
+                                    onChange={(e: any) => setCurrentCustomer({ ...currentCustomer, total_debt: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
+                                    className="pl-8"
+                                />
+                            </div>
                         </div>
                         <div className="grid grid-cols-4 gap-4 pt-2">
                             <Label htmlFor="edit-description" className="text-right mt-2 font-medium">Descripción</Label>

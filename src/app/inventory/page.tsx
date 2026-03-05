@@ -26,7 +26,9 @@ export default function InventoryPage() {
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [isStockDialogOpen, setIsStockDialogOpen] = useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [currentProduct, setCurrentProduct] = useState<any>(null);
+    const [productToDelete, setProductToDelete] = useState<{ id: string, name: string } | null>(null);
     const [stockAmount, setStockAmount] = useState<number>(0);
 
     const [newProduct, setNewProduct] = useState({
@@ -45,14 +47,34 @@ export default function InventoryPage() {
         p.barcode.includes(search)
     );
 
-    const handleDelete = async (id: string, name: string) => {
-        if (confirm(`¿Está seguro de eliminar el producto "${name}"?`)) {
-            try {
-                await deleteProduct(id);
-                toast.success("Producto eliminado exitosamente");
-            } catch (error) {
+    const handleDelete = (id: string, name: string) => {
+        setProductToDelete({ id, name });
+        setIsDeleteDialogOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!productToDelete) return;
+
+        try {
+            await deleteProduct(productToDelete.id);
+            toast.success("Producto eliminado exitosamente");
+            setIsDeleteDialogOpen(false);
+            setProductToDelete(null);
+        } catch (error: any) {
+            if (error?.code === '23503') {
+                toast.error("No se puede eliminar el producto", {
+                    description: <span className="text-slate-800 font-medium">Este producto ya tiene ventas registradas. No se puede eliminar porque desaparecería de los reportes.</span>,
+                    style: {
+                        background: '#fee2e2',
+                        color: '#1e293b',
+                        borderColor: '#fca5a5',
+                    }
+                });
+            } else {
                 toast.error("Error al eliminar el producto", { description: "Revisa tu conexión o permisos." });
             }
+            setIsDeleteDialogOpen(false);
+            setProductToDelete(null);
         }
     };
 
@@ -165,7 +187,7 @@ export default function InventoryPage() {
                                 <TableHead>Categoría</TableHead>
                                 <TableHead className="text-right">Precio</TableHead>
                                 <TableHead className="text-right">Costo</TableHead>
-                                <TableHead className="text-right">Stock</TableHead>
+                                <TableHead className="text-center">Stock</TableHead>
                                 <TableHead className="text-right">Acciones</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -188,8 +210,8 @@ export default function InventoryPage() {
                                         </TableCell>
                                         <TableCell className="text-right font-semibold text-blue-600">S/ {product.price.toFixed(2)}</TableCell>
                                         <TableCell className="text-right text-slate-500">S/ {product.cost.toFixed(2)}</TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex items-center justify-end">
+                                        <TableCell className="text-center">
+                                            <div className="flex items-center justify-center">
                                                 {product.stock <= product.min_stock ? (
                                                     <Badge variant="destructive" className="bg-red-100 text-red-700 hover:bg-red-200 border-none">
                                                         {product.stock}
@@ -373,6 +395,28 @@ export default function InventoryPage() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsStockDialogOpen(false)}>Cancelar</Button>
                         <Button onClick={handleAdjustStock} className="bg-emerald-600 hover:bg-emerald-700 text-white border-transparent">Confirmar Ajuste</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal de Confirmación para Eliminar Producto */}
+            <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="text-red-600 flex items-center gap-2">
+                            <Trash2 className="h-5 w-5" /> Confirmar Eliminación
+                        </DialogTitle>
+                        <DialogDescription className="py-2">
+                            ¿Está seguro de eliminar el producto <strong className="text-slate-900">"{productToDelete?.name}"</strong>?
+                            <br /><br />
+                            Esta acción no se puede deshacer.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-0 mt-4">
+                        <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancelar</Button>
+                        <Button onClick={confirmDelete} className="bg-red-600 hover:bg-red-700 text-white border-transparent">
+                            Sí, Eliminar Producto
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

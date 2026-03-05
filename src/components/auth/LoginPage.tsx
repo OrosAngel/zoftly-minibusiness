@@ -5,17 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Store, Lock, ArrowRight, Loader2, Mail, User } from "lucide-react";
+import { Store, Lock, ArrowRight, Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 
 export function LoginPage() {
     const [pin, setPin] = useState("");
     const [email, setEmail] = useState("");
-    const [firstName, setFirstName] = useState("");
-    const [lastName, setLastName] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [isRegistering, setIsRegistering] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -27,52 +24,21 @@ export function LoginPage() {
 
         setIsLoading(true);
 
-        if (isRegistering) {
-            if (!firstName || !lastName) {
-                setIsLoading(false);
-                toast.error("Por favor completa tus nombres y apellidos.");
-                return;
-            }
+        const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password: pin,
+        });
 
-            const { data, error } = await supabase.auth.signUp({
-                email,
-                password: pin, // Using the 'pin' variable as the password since we repurposed it
-                options: {
-                    data: {
-                        first_name: firstName,
-                        last_name: lastName,
-                    }
-                }
+        if (error) {
+            toast.error("Error de autenticación", {
+                description: "Revisa tu correo electrónico o contraseña."
             });
-
-            setIsLoading(false);
-
-            if (error) {
-                toast.error("Error al registrarse", {
-                    description: error.message
-                });
-            } else {
-                toast.success("¡Registro exitoso!", {
-                    description: data.user?.identities?.length === 0 ? "El correo ya está registrado." : "Bienvenido a Zoftly."
-                });
-            }
+            setPin("");
         } else {
-            const { error } = await supabase.auth.signInWithPassword({
-                email,
-                password: pin,
-            });
-
-            setIsLoading(false);
-
-            if (error) {
-                toast.error("Error de autenticación", {
-                    description: "Revisa tu correo electrónico o contraseña."
-                });
-                setPin("");
-            } else {
-                toast.success("¡Ingreso exitoso!");
-            }
+            toast.success("¡Ingreso exitoso!");
         }
+
+        setIsLoading(false);
     };
 
     return (
@@ -87,53 +53,21 @@ export function LoginPage() {
                     <div className="h-16 w-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20 mb-2">
                         <Store className="h-8 w-8 text-white" />
                     </div>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Zoftly B2B</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Zoftly Business</h1>
                     <p className="text-slate-500 font-medium text-center">Software de Gestión para Bodegas</p>
                 </div>
 
                 <Card className="shadow-xl border-slate-100 bg-white/80 backdrop-blur-xl">
                     <CardHeader className="space-y-1 pb-6">
                         <CardTitle className="text-2xl font-bold text-center">
-                            {isRegistering ? "Crear cuenta" : "Ingreso al Sistema"}
+                            Ingreso al Sistema
                         </CardTitle>
                         <CardDescription className="text-center text-slate-500">
-                            {isRegistering ? "Ingresa tus datos para registrarte." : "Ingresa tus credenciales para acceder al panel."}
+                            Ingresa tus credenciales para acceder al panel.
                         </CardDescription>
                     </CardHeader>
                     <form onSubmit={handleSubmit}>
                         <CardContent className="space-y-4">
-                            {isRegistering && (
-                                <>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="firstName" className="text-slate-700 font-semibold">Nombres</Label>
-                                        <div className="relative">
-                                            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                                            <Input
-                                                id="firstName"
-                                                type="text"
-                                                placeholder="Ej. Juan Carlos"
-                                                className="pl-10 h-12 text-md shadow-sm"
-                                                value={firstName}
-                                                onChange={(e) => setFirstName(e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="lastName" className="text-slate-700 font-semibold">Apellidos</Label>
-                                        <div className="relative">
-                                            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                                            <Input
-                                                id="lastName"
-                                                type="text"
-                                                placeholder="Ej. Pérez Gómez"
-                                                className="pl-10 h-12 text-md shadow-sm"
-                                                value={lastName}
-                                                onChange={(e) => setLastName(e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-                                </>
-                            )}
                             <div className="space-y-2">
                                 <Label htmlFor="email" className="text-slate-700 font-semibold">Correo Electrónico</Label>
                                 <div className="relative">
@@ -166,10 +100,11 @@ export function LoginPage() {
                                 </div>
                             </div>
                         </CardContent>
+
                         <CardFooter className="flex flex-col space-y-4">
                             <Button
                                 type="submit"
-                                className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all duration-200"
+                                className="mt-4 w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all duration-200"
                                 disabled={isLoading}
                             >
                                 {isLoading ? (
@@ -179,18 +114,9 @@ export function LoginPage() {
                                     </>
                                 ) : (
                                     <>
-                                        {isRegistering ? "Registrarse" : "Acceder"} <ArrowRight className="ml-2 h-5 w-5" />
+                                        Acceder <ArrowRight className="ml-2 h-5 w-5" />
                                     </>
                                 )}
-                            </Button>
-
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                className="w-full text-slate-500"
-                                onClick={() => setIsRegistering(!isRegistering)}
-                            >
-                                {isRegistering ? "¿Ya tienes una cuenta? Iniciar Sesión" : "¿No tienes una cuenta? Regístrate aquí"}
                             </Button>
                         </CardFooter>
                     </form>

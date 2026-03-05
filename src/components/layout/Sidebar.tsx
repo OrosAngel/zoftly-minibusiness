@@ -1,14 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { LayoutDashboard, ShoppingCart, Package, ArrowRightLeft, Users, FileBarChart, Contact, Tags, Settings } from "lucide-react";
+import {
+  LayoutDashboard,
+  Tags,
+  TrendingUp,
+  Users,
+  Settings,
+  Store,
+  MessageSquare,
+  MessageCircle,
+  ShoppingCart,
+  Package,
+  ArrowRightLeft,
+  Contact
+} from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/store";
 import { supabase } from "@/lib/supabase";
 import { useEffect, useState } from "react";
 
-const navigation = [
+const businessNavigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Punto de Venta", href: "/pos", icon: ShoppingCart },
   { name: "Inventario", href: "/inventory", icon: Package },
@@ -16,15 +29,26 @@ const navigation = [
   { name: "Movimientos", href: "/movements", icon: ArrowRightLeft },
   { name: "Proveedores", href: "/suppliers", icon: Users },
   { name: "Clientes (Fiado)", href: "/customers", icon: Contact },
-  { name: "Reportes", href: "/reports", icon: FileBarChart },
-  { name: "Ajustes", href: "/settings", icon: Settings },
+  { name: "Reportes", href: "/reports", icon: TrendingUp },
+  { name: "Soporte (Chat)", href: "/support", icon: MessageCircle },
+  { name: "Configuración", href: "/settings", icon: Settings },
+];
+
+const adminNavigation = [
+  { name: "Panel General", href: "/admin", icon: LayoutDashboard },
+  { name: "Clientes / Tiendas", href: "/admin/stores", icon: Store },
+  { name: "Mensajes de Soporte", href: "/admin/messages", icon: MessageSquare },
+  { name: "Ajustes de Plataforma", href: "/admin/settings", icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const currentStore = useStore((state) => state.currentStore);
+  const userRole = useStore((state) => state.userRole);
   const [userName, setUserName] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
+
+  const navigation = userRole === 'ADMIN' ? adminNavigation : businessNavigation;
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -38,7 +62,7 @@ export function Sidebar() {
         const lastName = lastNameStr.split(" ")[0];
 
         if (firstName && lastName) {
-          setUserName(`${firstName} ${lastName}`);
+          setUserName(`${firstName} ${lastName} `);
         } else if (firstName) {
           setUserName(firstName);
         }
@@ -82,8 +106,8 @@ export function Sidebar() {
       <div className="border-t border-slate-800 p-4">
         <div className="flex items-center text-left">
           <div className="ml-3 truncate max-w-[200px]">
-            <p className="text-sm font-medium text-white truncate" title={userName || currentStore?.name || "Cargando..."}>
-              {userName || currentStore?.name || "Cargando..."}
+            <p className="text-sm font-medium text-white truncate" title={userName || (userRole === 'ADMIN' ? 'Zoftly Admin' : currentStore?.name) || "Cargando..."}>
+              {userName || (userRole === 'ADMIN' ? 'Zoftly Admin' : currentStore?.name) || "Cargando..."}
             </p>
             <p className="text-xs font-medium text-slate-400 truncate" title={userEmail}>
               {userEmail || "Cargando..."}

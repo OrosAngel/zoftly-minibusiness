@@ -15,6 +15,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const isAuthenticated = useStore((state) => state.isAuthenticated);
     const setAuthenticated = useStore((state) => state.setAuthenticated);
+    const setUserRole = useStore((state) => state.setUserRole);
     const setCurrentStore = useStore((state) => state.setCurrentStore);
     const pathname = usePathname();
 
@@ -27,52 +28,73 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         setMounted(true);
 
-        const initializeUserStore = async (userId: string) => {
+        const initializeUserSession = async (userId: string) => {
             try {
-                const { data: stores, error } = await supabase
-                    .from('stores')
-                    .select('*')
-                    .eq('owner_id', userId);
+                // 1. Fetch the user's role from the new profiles table
+                const { data: profile, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('role')
+                    .eq('id', userId)
+                    .single();
 
-                if (error) throw error;
+                if (profileError && profileError.code !== 'PGRST116') {
+                    console.error("Error fetching profile (detailed):", JSON.stringify(profileError, null, 2));
+                    console.error("Raw error:", profileError);
+                }
+                console.log("DEBUG: Fetched profile ID:", userId, "Data:", profile);
 
-                if (stores && stores.length > 0) {
-                    setCurrentStore(stores[0]);
-                } else {
-                    const { data: newStore, error: insertError } = await supabase
+                // If no profile exists (before SQL script), assume BUSINESS_OWNER
+                const role = profile?.role || 'BUSINESS_OWNER';
+                setUserRole(role);
+
+                // 2. Only run the store initialization logic for normal business owners
+                if (role === 'BUSINESS_OWNER') {
+                    const { data: stores, error } = await supabase
                         .from('stores')
-                        .insert({ owner_id: userId, name: "Mi Bodega" })
-                        .select()
-                        .single();
+                        .select('*')
+                        .eq('owner_id', userId);
 
-                    if (insertError) throw insertError;
-                    if (newStore) {
-                        setCurrentStore(newStore);
+                    if (error) throw error;
 
-                        // Insertar categorías por defecto
-                        const defaultCategories = [
-                            { store_id: newStore.id, name: "Abarrotes" },
-                            { store_id: newStore.id, name: "Lácteos" },
-                            { store_id: newStore.id, name: "Bebidas" },
-                            { store_id: newStore.id, name: "Limpieza" },
-                            { store_id: newStore.id, name: "Snacks" },
-                            { store_id: newStore.id, name: "Embutidos" },
-                        ];
-                        await supabase.from('categories').insert(defaultCategories);
+                    if (stores && stores.length > 0) {
+                        setCurrentStore(stores[0]);
+                    } else {
+                        const { data: newStore, error: insertError } = await supabase
+                            .from('stores')
+                            .insert({ owner_id: userId, name: "Mi Bodega" })
+                            .select()
+                            .single();
+
+                        if (insertError) throw insertError;
+                        if (newStore) {
+                            setCurrentStore(newStore);
+
+                            // Insertar categorías por defecto
+                            const defaultCategories = [
+                                { store_id: newStore.id, name: "Abarrotes" },
+                                { store_id: newStore.id, name: "Lácteos" },
+                                { store_id: newStore.id, name: "Bebidas" },
+                                { store_id: newStore.id, name: "Limpieza" },
+                                { store_id: newStore.id, name: "Snacks" },
+                                { store_id: newStore.id, name: "Embutidos" },
+                            ];
+                            await supabase.from('categories').insert(defaultCategories);
+                        }
                     }
+
+                    // Fetch inventory data for the active store
+                    await useStore.getState().fetchInventoryData();
                 }
 
-                // Fetch inventory data for the active store
-                await useStore.getState().fetchInventoryData();
             } catch (err) {
-                console.error("Error setting up store:", err);
+                console.error("Error setting up user session:", err);
             }
         };
 
         // Check active session and sets the user
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) {
-                initializeUserStore(session.user.id).then(() => {
+                initializeUserSession(session.user.id).then(() => {
                     setAuthenticated(true);
                 });
             } else {
@@ -84,7 +106,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             data: { subscription },
         } = supabase.auth.onAuthStateChange((_event, session) => {
             if (session) {
-                initializeUserStore(session.user.id).then(() => {
+                initializeUserSession(session.user.id).then(() => {
                     setAuthenticated(true);
                 });
             } else {
@@ -93,7 +115,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
 
         return () => subscription.unsubscribe();
-    }, [setAuthenticated, setCurrentStore]);
+    }, [setAuthenticated, setCurrentStore, setUserRole]);
 
     if (!mounted) {
         return (

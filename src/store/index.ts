@@ -89,6 +89,7 @@ export interface Customer {
 interface ZoftlyStore {
     // State
     currentStore: StoreContext;
+    userRole: 'ADMIN' | 'BUSINESS_OWNER' | null;
     products: Product[];
     categories: Category[];
     suppliers: Supplier[];
@@ -111,7 +112,7 @@ interface ZoftlyStore {
     updateSupplier: (id: string, supplier: Partial<Supplier>) => Promise<void>;
     deleteSupplier: (id: string) => Promise<void>;
 
-    addCustomer: (customer: Omit<Customer, "id" | "store_id" | "total_debt">) => Promise<void>;
+    addCustomer: (customer: Omit<Customer, "id" | "store_id">) => Promise<void>;
     updateCustomer: (id: string, customer: Partial<Customer>) => Promise<void>;
     deleteCustomer: (id: string) => Promise<void>;
 
@@ -127,6 +128,7 @@ interface ZoftlyStore {
     isAuthenticated: boolean;
     setAuthenticated: (status: boolean) => void;
     setCurrentStore: (store: StoreContext) => void;
+    setUserRole: (role: 'ADMIN' | 'BUSINESS_OWNER' | null) => void;
     clearStore: () => void;
 }
 
@@ -134,6 +136,7 @@ export const useStore = create<ZoftlyStore>()(
     persist(
         (set, get) => ({
             currentStore: { id: "", name: "" },
+            userRole: null,
             products: [],
             categories: [],
             suppliers: [],
@@ -293,7 +296,7 @@ export const useStore = create<ZoftlyStore>()(
                 const state = get();
                 const { data: newCustomer, error } = await supabase
                     .from('customers')
-                    .insert({ ...data, store_id: state.currentStore.id, total_debt: 0 })
+                    .insert({ ...data, store_id: state.currentStore.id, total_debt: data.total_debt ?? 0 })
                     .select()
                     .single();
                 if (error) throw error;
@@ -465,8 +468,10 @@ export const useStore = create<ZoftlyStore>()(
             },
             setAuthenticated: (status: boolean) => set({ isAuthenticated: status }),
             setCurrentStore: (store: StoreContext) => set({ currentStore: store }),
+            setUserRole: (role) => set({ userRole: role }),
             clearStore: () => set({
                 currentStore: { id: "", name: "" },
+                userRole: null,
                 products: [],
                 categories: [],
                 suppliers: [],
