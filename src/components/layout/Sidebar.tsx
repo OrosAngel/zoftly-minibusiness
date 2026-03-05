@@ -55,16 +55,21 @@ export function Sidebar() {
       if (user) {
         if (user.email) setUserEmail(user.email);
 
+        const fullName = user.user_metadata?.full_name || "";
         const firstNameStr = user.user_metadata?.first_name || "";
         const lastNameStr = user.user_metadata?.last_name || "";
 
-        const firstName = firstNameStr.split(" ")[0];
-        const lastName = lastNameStr.split(" ")[0];
+        if (fullName) {
+          setUserName(fullName);
+        } else {
+          const firstName = firstNameStr.split(" ")[0];
+          const lastName = lastNameStr.split(" ")[0];
 
-        if (firstName && lastName) {
-          setUserName(`${firstName} ${lastName} `);
-        } else if (firstName) {
-          setUserName(firstName);
+          if (firstName && lastName) {
+            setUserName(`${firstName} ${lastName}`);
+          } else if (firstName) {
+            setUserName(firstName);
+          }
         }
       }
     });
