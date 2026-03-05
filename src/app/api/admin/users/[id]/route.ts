@@ -1,19 +1,22 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+function getAdminClient() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseServiceKey) return null;
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || '', {
-    auth: {
-        autoRefreshToken: false,
-        persistSession: false
-    }
-});
+    return createClient(supabaseUrl, supabaseServiceKey, {
+        auth: {
+            autoRefreshToken: false,
+            persistSession: false
+        }
+    });
+}
 
 // Middleware helper to check admin role
-async function checkIsAdmin(adminId: string) {
-    if (!supabaseServiceKey) return false;
+async function checkIsAdmin(supabaseAdmin: any, adminId: string) {
+    if (!supabaseAdmin) return false;
     const { data: adminProfile } = await supabaseAdmin
         .from('profiles')
         .select('role')
@@ -25,13 +28,14 @@ async function checkIsAdmin(adminId: string) {
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
     try {
-        if (!supabaseServiceKey) return NextResponse.json({ error: 'Configuración de servidor incompleta.' }, { status: 500 });
+        const supabaseAdmin = getAdminClient();
+        if (!supabaseAdmin) return NextResponse.json({ error: 'Configuración de servidor incompleta.' }, { status: 500 });
 
         const { id: userId } = await context.params;
         const body = await request.json();
         const { adminId, fullName, email, password, storeName } = body;
 
-        const isAdmin = await checkIsAdmin(adminId);
+        const isAdmin = await checkIsAdmin(supabaseAdmin, adminId);
         if (!isAdmin) return NextResponse.json({ error: 'No autorizado.' }, { status: 403 });
 
         // Update auth user data (email, password, metadata)
@@ -74,13 +78,14 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
     try {
-        if (!supabaseServiceKey) return NextResponse.json({ error: 'Configuración de servidor incompleta.' }, { status: 500 });
+        const supabaseAdmin = getAdminClient();
+        if (!supabaseAdmin) return NextResponse.json({ error: 'Configuración de servidor incompleta.' }, { status: 500 });
 
         const { id: userId } = await context.params;
         const body = await request.json();
         const { adminId } = body;
 
-        const isAdmin = await checkIsAdmin(adminId);
+        const isAdmin = await checkIsAdmin(supabaseAdmin, adminId);
         if (!isAdmin) return NextResponse.json({ error: 'No autorizado.' }, { status: 403 });
 
         // Deleting from auth.users cascades to public.profiles and subsequently public.stores
