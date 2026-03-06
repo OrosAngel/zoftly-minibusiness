@@ -59,7 +59,7 @@ export default function AdminDashboard() {
     return (
         <div className="flex-1 space-y-4 sm:space-y-6 p-4 sm:p-8 pt-4 sm:pt-6 overflow-hidden">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0">
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Zoftly Network Overview</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Zoftlytech Network Overview</h2>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

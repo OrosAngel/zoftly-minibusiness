@@ -123,7 +123,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 <div className="h-16 w-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-4" suppressHydrationWarning>
                     <Store className="h-8 w-8 text-white" suppressHydrationWarning />
                 </div>
-                <p className="text-slate-500 font-medium">Cargando Zoftly...</p>
+                <p className="text-slate-500 font-medium">Cargando Zoftlytech...</p>
             </div>
         );
     }

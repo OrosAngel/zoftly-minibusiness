@@ -78,7 +78,7 @@ export function Sidebar() {
   return (
     <div className="flex h-full w-64 flex-col bg-slate-900 text-white">
       <div className="flex h-16 items-center px-6">
-        <div className="text-2xl font-bold text-blue-400">Zoftly</div>
+        <div className="text-2xl font-bold text-blue-400">Zoftlytech</div>
       </div>
       <div className="flex-1 overflow-y-auto py-4">
         <nav className="space-y-1 px-3">
@@ -111,8 +111,8 @@ export function Sidebar() {
       <div className="border-t border-slate-800 p-4">
         <div className="flex items-center text-left">
           <div className="ml-3 truncate max-w-[200px]">
-            <p className="text-sm font-medium text-white truncate" title={userName || (userRole === 'ADMIN' ? 'Zoftly Admin' : currentStore?.name) || "Cargando..."}>
-              {userName || (userRole === 'ADMIN' ? 'Zoftly Admin' : currentStore?.name) || "Cargando..."}
+            <p className="text-sm font-medium text-white truncate" title={userName || (userRole === 'ADMIN' ? 'Zoftlytech Admin' : currentStore?.name) || "Cargando..."}>
+              {userName || (userRole === 'ADMIN' ? 'Zoftlytech Admin' : currentStore?.name) || "Cargando..."}
             </p>
             <p className="text-xs font-medium text-slate-400 truncate" title={userEmail}>
               {userEmail || "Cargando..."}

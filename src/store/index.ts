@@ -86,7 +86,7 @@ export interface Customer {
 
 // Mock data removed. State now initialized entirely from Supabase.
 
-interface ZoftlyStore {
+interface ZoftlytechStore {
     // State
     currentStore: StoreContext;
     userRole: 'ADMIN' | 'BUSINESS_OWNER' | null;
@@ -132,7 +132,7 @@ interface ZoftlyStore {
     clearStore: () => void;
 }
 
-export const useStore = create<ZoftlyStore>()(
+export const useStore = create<ZoftlytechStore>()(
     persist(
         (set, get) => ({
             currentStore: { id: "", name: "" },

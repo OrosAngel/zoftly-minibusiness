@@ -116,7 +116,7 @@ export default function AdminStoresPage() {
                 return;
             }
 
-            toast.success("Cliente creado exitosamente", { description: "El usuario ya puede iniciar sesión y empezar a usar Zoftly." });
+            toast.success("Cliente creado exitosamente", { description: "El usuario ya puede iniciar sesión y empezar a usar Zoftlytech." });
             setIsCreateOpen(false);
             setNewClient({ fullName: "", email: "", password: "" }); // Reset
 
@@ -238,7 +238,7 @@ export default function AdminStoresPage() {
                             <DialogHeader>
                                 <DialogTitle>Registrar Negocio / Cliente</DialogTitle>
                                 <DialogDescription>
-                                    Crea una cuenta nueva para uno de tus clientes. Ellos podrán acceder a Zoftly inmediatamente después con este correo y contraseña.
+                                    Crea una cuenta nueva para uno de tus clientes. Ellos podrán acceder a Zoftlytech inmediatamente después con este correo y contraseña.
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
@@ -292,7 +292,7 @@ export default function AdminStoresPage() {
             <Card className="shadow-sm border-slate-200">
                 <CardHeader className="bg-slate-50 rounded-t-xl border-b border-slate-100">
                     <CardTitle>Tiendas / Negocios</CardTitle>
-                    <CardDescription>Lista completa de todos los negocios que usan Zoftly.</CardDescription>
+                    <CardDescription>Lista completa de todos los negocios que usan Zoftlytech.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                     <Table>

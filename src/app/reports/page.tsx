@@ -87,7 +87,7 @@ export default function ReportsPage() {
             const url = window.URL.createObjectURL(blob);
             const anchor = document.createElement("a");
             anchor.href = url;
-            anchor.download = `Zoftly_CierreCaja_${format(new Date(), "yyyyMMdd")}.xlsx`;
+            anchor.download = `Zoftlytech_CierreCaja_${format(new Date(), "yyyyMMdd")}.xlsx`;
             anchor.click();
             window.URL.revokeObjectURL(url);
 
@@ -139,7 +139,7 @@ export default function ReportsPage() {
             const url = window.URL.createObjectURL(blob);
             const anchor = document.createElement("a");
             anchor.href = url;
-            anchor.download = `Zoftly_InvValorizado_${format(new Date(), "yyyyMMdd")}.xlsx`;
+            anchor.download = `Zoftlytech_InvValorizado_${format(new Date(), "yyyyMMdd")}.xlsx`;
             anchor.click();
             window.URL.revokeObjectURL(url);
 

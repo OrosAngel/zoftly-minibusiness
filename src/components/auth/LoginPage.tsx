@@ -53,7 +53,7 @@ export function LoginPage() {
                     <div className="h-16 w-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20 mb-2">
                         <Store className="h-8 w-8 text-white" />
                     </div>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Zoftly Business</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Zoftlytech Business</h1>
                     <p className="text-slate-500 font-medium text-center">Software de Gestión de Negocios</p>
                 </div>
 
@@ -123,7 +123,7 @@ export function LoginPage() {
                 </Card>
 
                 <p className="text-center text-sm text-slate-500 mt-8">
-                    &copy; {new Date().getFullYear()} Zoftly. Todos los derechos reservados.
+                    &copy; {new Date().getFullYear()} Zoftlytech . Todos los derechos reservados.
                 </p>
             </div>
         </div>

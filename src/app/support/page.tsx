@@ -136,7 +136,7 @@ export default function SupportPage() {
         <div className="flex-1 flex flex-col h-[calc(100vh-[var(--topbar-height)])] p-4 sm:p-8 max-w-5xl mx-auto w-full">
             <div className="mb-6">
                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Soporte Técnico</h2>
-                <p className="text-slate-500">Comunícate directamente con el equipo de Zoftly.</p>
+                <p className="text-slate-500">Comunícate directamente con el equipo de Zoftlytech.</p>
             </div>
 
             <Card className="flex-1 shrink-0 flex flex-col overflow-hidden shadow-sm border-slate-200">
@@ -147,7 +147,7 @@ export default function SupportPage() {
                         <AvatarFallback className="bg-blue-600 text-white"><Bot className="h-5 w-5" /></AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col">
-                        <span className="font-semibold text-slate-900">ZoftlyTech Support</span>
+                        <span className="font-semibold text-slate-900">Zoftlytech Support</span>
                         <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                             En línea
