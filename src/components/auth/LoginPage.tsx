@@ -54,7 +54,7 @@ export function LoginPage() {
                         <Store className="h-8 w-8 text-white" />
                     </div>
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900">Zoftly Business</h1>
-                    <p className="text-slate-500 font-medium text-center">Software de Gestión para Bodegas</p>
+                    <p className="text-slate-500 font-medium text-center">Software de Gestión de Negocios</p>
                 </div>
 
                 <Card className="shadow-xl border-slate-100 bg-white/80 backdrop-blur-xl">
