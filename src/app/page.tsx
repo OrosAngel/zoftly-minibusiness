@@ -2,7 +2,7 @@
 
 import { useStore } from "@/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { format, isToday, parseISO, subDays, subYears, startOfMonth, subMonths, isAfter, isBefore, endOfMonth } from "date-fns";
+import { format, isToday, parseISO, subDays, subYears, startOfMonth, subMonths, isAfter, isBefore, endOfMonth, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval } from "date-fns";
 import { es } from "date-fns/locale";
 import { DollarSign, ShoppingBag, CreditCard, AlertTriangle, Package, Zap, ArrowRightLeft, TrendingUp, Calendar as CalendarIcon, ChevronDown } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
@@ -176,31 +176,67 @@ export default function Dashboard() {
         if (bin) bin.total += sale.total_amount;
       });
     } else if (groupBy === "day") {
-      // Group by distinct days found in filtered sales, sorted
-      const daysMap = new Map<string, number>();
+      const now = new Date();
+      let start = subDays(now, 7);
+      let end = now;
+      if (dateFilter === "28days") start = subDays(now, 28);
+      else if (dateFilter === "prev_month") {
+        start = startOfMonth(subMonths(now, 1));
+        end = endOfMonth(subMonths(now, 1));
+      } else if (dateFilter === "prev_prev_month") {
+        start = startOfMonth(subMonths(now, 2));
+        end = endOfMonth(subMonths(now, 2));
+      } else if (dateFilter === "custom") {
+        start = subDays(now, 30);
+      }
+
+      const days = eachDayOfInterval({ start, end });
+      data = days.map(d => ({ time: format(d, "dd MMM", { locale: es }), total: 0 }));
+
       filteredSales.forEach(sale => {
         const d = parseISO(sale.created_at);
         const dayFormat = format(d, "dd MMM", { locale: es });
-        daysMap.set(dayFormat, (daysMap.get(dayFormat) || 0) + sale.total_amount);
+        const bin = data.find(h => h.time === dayFormat);
+        if (bin) bin.total += sale.total_amount;
       });
-      data = Array.from(daysMap, ([time, total]) => ({ time, total })).reverse();
     } else if (groupBy === "week") {
-      const weeksMap = new Map<string, number>();
+      const now = new Date();
+      const start = subDays(now, 90);
+      const end = now;
+      const weeks = eachWeekOfInterval({ start, end });
+      data = weeks.map(d => ({ time: `Sem. ${format(d, "w", { locale: es })}`, total: 0 }));
+
       filteredSales.forEach(sale => {
         const d = parseISO(sale.created_at);
-        const weekFormat = `Sem ${format(d, "w", { locale: es })}`;
-        weeksMap.set(weekFormat, (weeksMap.get(weekFormat) || 0) + sale.total_amount);
+        const weekFormat = `Sem. ${format(d, "w", { locale: es })}`;
+        const bin = data.find(h => h.time === weekFormat);
+        if (bin) bin.total += sale.total_amount;
       });
-      data = Array.from(weeksMap, ([time, total]) => ({ time, total })).reverse();
     } else if (groupBy === "month") {
-      const monthsMap = new Map<string, number>();
+      const now = new Date();
+      let start = subDays(now, 365);
+      let end = now;
+      if (dateFilter === "prev_year") {
+        start = new Date(now.getFullYear() - 1, 0, 1);
+        end = new Date(now.getFullYear() - 1, 11, 31);
+      } else if (dateFilter === "prev_prev_year") {
+        start = new Date(now.getFullYear() - 2, 0, 1);
+        end = new Date(now.getFullYear() - 2, 11, 31);
+      } else if (dateFilter === "all_time") {
+        start = filteredSales.length > 0
+          ? new Date(Math.min(...filteredSales.map(s => parseISO(s.created_at).getTime())))
+          : subDays(now, 365);
+      }
+
+      const months = eachMonthOfInterval({ start, end });
+      data = months.map(d => ({ time: format(d, "MMM yy", { locale: es }), total: 0 }));
+
       filteredSales.forEach(sale => {
         const d = parseISO(sale.created_at);
         const monthFormat = format(d, "MMM yy", { locale: es });
-        monthsMap.set(monthFormat, (monthsMap.get(monthFormat) || 0) + sale.total_amount);
+        const bin = data.find(h => h.time === monthFormat);
+        if (bin) bin.total += sale.total_amount;
       });
-      // Try to ensure chronological sort or just reverse insertion
-      data = Array.from(monthsMap, ([time, total]) => ({ time, total })).reverse();
     }
 
     return data;
@@ -306,7 +342,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="pl-0 border-t border-slate-100 pt-4">
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                 <XAxis
                   dataKey="time"
@@ -329,13 +365,15 @@ export default function Dashboard() {
                   formatter={(value: any) => [`S/ ${value.toFixed(2)}`, 'Ventas']}
                   labelStyle={{ color: '#0f172a', fontWeight: 'bold', marginBottom: '4px', textTransform: 'capitalize' }}
                 />
-                <Bar
+                <Line
+                  type="monotone"
                   dataKey="total"
-                  fill="#3b82f6"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={60}
+                  stroke="#3b82f6"
+                  strokeWidth={3}
+                  dot={{ r: 4, strokeWidth: 2, fill: "#ffffff" }}
+                  activeDot={{ r: 6, stroke: "#3b82f6", strokeWidth: 2 }}
                 />
-              </BarChart>
+              </LineChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
