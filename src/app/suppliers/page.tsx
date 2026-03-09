@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useStore } from "@/store";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,17 @@ export default function SuppliersPage() {
     const deleteSupplier = useStore((state) => state.deleteSupplier);
 
     const [search, setSearch] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
+    const [isProcessing, setIsProcessing] = useState(false);
+    const lastActionTime = useRef(0);
+
+    const checkThrottle = () => {
+        const now = Date.now();
+        if (now - lastActionTime.current < 2000) return false;
+        lastActionTime.current = now;
+        return true;
+    };
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [newSupplier, setNewSupplier] = useState({ name: '', phone: '' });
@@ -39,6 +50,10 @@ export default function SuppliersPage() {
         setMounted(true);
     }, []);
 
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [search]);
+
     if (!mounted) return <div className="p-8">Cargando proveedores...</div>;
 
     const filteredSuppliers = suppliers.filter(s =>
@@ -46,11 +61,19 @@ export default function SuppliersPage() {
         s.phone.includes(search)
     );
 
+    const totalPages = Math.ceil(filteredSuppliers.length / itemsPerPage);
+    const paginatedSuppliers = filteredSuppliers.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
     const getSuppliedProductsCount = (supplierId: string) => {
         return products.filter(p => p.supplier_id === supplierId).length;
     };
 
     const handleDelete = async (id: string, name: string) => {
+        if (!checkThrottle()) return;
+        if (isProcessing) return;
         if (confirm(`¿Está seguro de eliminar el proveedor "${name}"?`)) {
             // Check if supplier has products
             const hasProducts = products.some(p => p.supplier_id === id);
@@ -58,21 +81,27 @@ export default function SuppliersPage() {
                 toast.error("No se puede eliminar", { description: "Este proveedor tiene productos asociados." });
                 return;
             }
+            setIsProcessing(true);
             try {
                 await deleteSupplier(id);
                 toast.success("Proveedor eliminado exitosamente");
             } catch (error) {
                 toast.error("Error al eliminar el proveedor");
+            } finally {
+                setIsProcessing(false);
             }
         }
     };
 
     const handleAddSupplier = async () => {
+        if (!checkThrottle()) return;
+        if (isProcessing) return;
         if (!newSupplier.name) {
             toast.error("Datos incompletos", { description: "El nombre es obligatorio" });
             return;
         }
 
+        setIsProcessing(true);
         try {
             await addSupplier(newSupplier);
             toast.success("Proveedor creado exitosamente");
@@ -80,15 +109,20 @@ export default function SuppliersPage() {
             setNewSupplier({ name: '', phone: '' });
         } catch (error) {
             toast.error("Error al crear proveedor");
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     const handleEditSupplier = async () => {
+        if (!checkThrottle()) return;
+        if (isProcessing) return;
         if (!currentSupplier.name) {
             toast.error("Datos incompletos", { description: "El nombre es obligatorio" });
             return;
         }
 
+        setIsProcessing(true);
         try {
             await updateSupplier(currentSupplier.id, {
                 name: currentSupplier.name,
@@ -98,6 +132,8 @@ export default function SuppliersPage() {
             setIsEditDialogOpen(false);
         } catch (error) {
             toast.error("Error al actualizar proveedor");
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -164,7 +200,7 @@ export default function SuppliersPage() {
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredSuppliers.map((supplier) => (
+                                paginatedSuppliers.map((supplier) => (
                                     <TableRow key={supplier.id}>
                                         <TableCell className="font-medium">
                                             <div className="flex items-center">
@@ -185,7 +221,7 @@ export default function SuppliersPage() {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end space-x-1">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => openEditDialog(supplier)}>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => openEditDialog(supplier)} disabled={isProcessing}>
                                                     <Edit className="h-4 w-4" />
                                                 </Button>
                                                 <Button
@@ -193,6 +229,7 @@ export default function SuppliersPage() {
                                                     size="icon"
                                                     className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
                                                     onClick={() => handleDelete(supplier.id, supplier.name)}
+                                                    disabled={isProcessing}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
@@ -204,6 +241,31 @@ export default function SuppliersPage() {
                         </TableBody>
                     </Table>
                 </div>
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-2 py-4 border-t border-slate-200 mt-2 bg-slate-50 rounded-b-md">
+                        <p className="text-sm text-slate-500">
+                            Página <span className="font-medium text-slate-900">{currentPage}</span> de <span className="font-medium text-slate-900">{totalPages}</span>
+                        </p>
+                        <div className="flex items-center space-x-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                Anterior
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages || totalPages === 0}
+                            >
+                                Siguiente
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Modal para Agregar Proveedor */}
@@ -239,8 +301,10 @@ export default function SuppliersPage() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleAddSupplier} className="bg-slate-900 hover:bg-slate-800">Guardar Proveedor</Button>
+                        <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isProcessing}>Cancelar</Button>
+                        <Button onClick={handleAddSupplier} className="bg-slate-900 hover:bg-slate-800" disabled={isProcessing}>
+                            {isProcessing ? "Guardando..." : "Guardar Proveedor"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -276,8 +340,10 @@ export default function SuppliersPage() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleEditSupplier} className="bg-blue-600 hover:bg-blue-700">Actualizar Cambios</Button>
+                        <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isProcessing}>Cancelar</Button>
+                        <Button onClick={handleEditSupplier} className="bg-blue-600 hover:bg-blue-700" disabled={isProcessing}>
+                            {isProcessing ? "Actualizando..." : "Actualizar Cambios"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

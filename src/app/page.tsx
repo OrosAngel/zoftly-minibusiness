@@ -2,10 +2,9 @@
 
 import { useStore } from "@/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { format, isToday, parseISO, subDays, subYears, startOfMonth, subMonths, isAfter, isBefore, endOfMonth, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval } from "date-fns";
+import { format, isToday, parseISO, subDays, subMonths, startOfMonth, endOfMonth, isAfter, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval } from "date-fns";
 import { es } from "date-fns/locale";
-import { DollarSign, ShoppingBag, CreditCard, AlertTriangle, Package, Zap, ArrowRightLeft, TrendingUp, Calendar as CalendarIcon, ChevronDown } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { DollarSign, AlertTriangle, Package, Zap, ArrowRightLeft, TrendingUp, Calendar as CalendarIcon, ChevronDown } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +15,15 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
-import { useEffect, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
+import dynamic from "next/dynamic";
+import { useHydration } from "@/hooks/use-hydration";
+
+// Lazy-load the chart component (recharts is ~200KB)
+const SalesChart = dynamic(() => import("@/components/dashboard/SalesChart"), {
+  ssr: false,
+  loading: () => <div className="h-[300px] flex items-center justify-center text-slate-400">Cargando gráfico...</div>,
+});
 
 type DateRangeFilter =
   | "today"
@@ -32,151 +39,157 @@ type DateRangeFilter =
   | "custom";
 
 export default function Dashboard() {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useHydration();
   const sales = useStore((state) => state.sales);
-  const customers = useStore((state) => state.customers);
   const products = useStore((state) => state.products);
-  const store = useStore((state) => state.currentStore);
   const movements = useStore((state) => state.movements);
 
   const [dateFilter, setDateFilter] = useState<DateRangeFilter>("today");
 
-  // Prevent hydration mismatch with Zustand persist
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // ——— Memoized KPIs ———
 
-  if (!mounted) return <div className="p-8">Cargando dashboard...</div>;
+  const todaysSales = useMemo(
+    () => sales.filter((sale) => isToday(parseISO(sale.created_at))),
+    [sales]
+  );
+  const todaysRevenue = useMemo(
+    () => todaysSales.reduce((acc, sale) => acc + sale.total_amount, 0),
+    [todaysSales]
+  );
 
-  // Calculate KPIs
-  const todaysSales = sales.filter((sale) => isToday(parseISO(sale.created_at)));
-  const todaysRevenue = todaysSales.reduce((acc, sale) => acc + sale.total_amount, 0);
-  const todaysSalesCount = todaysSales.length;
+  const inventoryValue = useMemo(
+    () => products.reduce((acc, p) => acc + p.stock * p.cost, 0),
+    [products]
+  );
 
-  // Valor del Inventario
-  const inventoryValue = products.reduce((acc, p) => acc + (p.stock * p.cost), 0);
+  const lastAutomation = useMemo(() => {
+    const automations = movements.filter(m => m.movement_type === "AUTOMATIZACION");
+    return automations.length > 0
+      ? format(parseISO(automations[0].created_at), "HH:mm", { locale: es }) + " hrs"
+      : "Sin actividad";
+  }, [movements]);
 
-  // Última Automatización
-  const automations = movements.filter(m => m.movement_type === "AUTOMATIZACION");
-  const lastAutomation = automations.length > 0
-    ? format(parseISO(automations[0].created_at), "HH:mm", { locale: es }) + " hrs"
-    : "Sin actividad";
+  const atRiskCount = useMemo(
+    () => products.filter(p => p.stock <= p.min_stock).length,
+    [products]
+  );
 
-  // Top 5 Productos
-  const salesMap = new Map<string, { name: string, qty: number, revenue: number }>();
-  // We use the full store's saleItems to find absolute top products
-  const saleItems = useStore.getState().saleItems;
-  saleItems.forEach(item => {
-    const existing = salesMap.get(item.product_id) || { name: "", qty: 0, revenue: 0 };
-    if (!existing.name) {
-      const p = products.find(x => x.id === item.product_id);
-      existing.name = p ? p.name : "Producto Eliminado";
-    }
-    existing.qty += item.quantity;
-    existing.revenue += item.subtotal;
-    salesMap.set(item.product_id, existing);
-  });
-  const topProducts = Array.from(salesMap.values())
-    .sort((a, b) => b.qty - a.qty)
-    .slice(0, 5);
+  // ——— Top 5 Products (O(n) with Map instead of O(n×m) with find) ———
 
-  // Helper function to get the current selected range labels and filter sales
-  const getFilteredSales = () => {
+  const topProducts = useMemo(() => {
+    const saleItems = useStore.getState().saleItems;
+    // Build product name lookup Map once — O(m)
+    const productNameMap = new Map(products.map(p => [p.id, p.name]));
+
+    const salesMap = new Map<string, { name: string; qty: number; revenue: number }>();
+    saleItems.forEach(item => {
+      const existing = salesMap.get(item.product_id) || {
+        name: productNameMap.get(item.product_id) || "Producto Eliminado",
+        qty: 0,
+        revenue: 0,
+      };
+      existing.qty += item.quantity;
+      existing.revenue += item.subtotal;
+      salesMap.set(item.product_id, existing);
+    });
+
+    return Array.from(salesMap.values())
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 5);
+  }, [products]);
+
+  // ——— Date-filtered sales ———
+
+  const { filteredSales, label: filterLabel, groupBy } = useMemo(() => {
     const now = new Date();
     let label = "Hoy";
-    let filteredSales = sales;
-    let formatStr = "HH:mm";
-    let groupBy = "hour";
+    let filtered = sales;
+    let group = "hour";
 
     switch (dateFilter) {
       case "today":
-        filteredSales = sales.filter(s => isToday(parseISO(s.created_at)));
+        filtered = sales.filter(s => isToday(parseISO(s.created_at)));
         label = "Hoy";
-        groupBy = "hour";
+        group = "hour";
         break;
       case "7days":
-        filteredSales = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 7)));
+        filtered = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 7)));
         label = "Últimos 7 días";
-        groupBy = "day";
+        group = "day";
         break;
       case "28days":
-        filteredSales = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 28)));
+        filtered = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 28)));
         label = "Últimos 28 días";
-        groupBy = "day";
+        group = "day";
         break;
       case "90days":
-        filteredSales = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 90)));
+        filtered = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 90)));
         label = "Últimos 90 días";
-        groupBy = "week";
+        group = "week";
         break;
       case "365days":
-        filteredSales = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 365)));
+        filtered = sales.filter(s => isAfter(parseISO(s.created_at), subDays(now, 365)));
         label = "Últimos 365 días";
-        groupBy = "month";
+        group = "month";
         break;
       case "prev_year":
-        filteredSales = sales.filter(s => {
-          const d = parseISO(s.created_at);
-          return d.getFullYear() === now.getFullYear() - 1;
-        });
+        filtered = sales.filter(s => parseISO(s.created_at).getFullYear() === now.getFullYear() - 1);
         label = `${now.getFullYear() - 1}`;
-        groupBy = "month";
+        group = "month";
         break;
       case "prev_prev_year":
-        filteredSales = sales.filter(s => {
-          const d = parseISO(s.created_at);
-          return d.getFullYear() === now.getFullYear() - 2;
-        });
+        filtered = sales.filter(s => parseISO(s.created_at).getFullYear() === now.getFullYear() - 2);
         label = `${now.getFullYear() - 2}`;
-        groupBy = "month";
+        group = "month";
         break;
-      case "prev_month":
+      case "prev_month": {
         const prevMonth = subMonths(startOfMonth(now), 1);
-        filteredSales = sales.filter(s => {
+        filtered = sales.filter(s => {
           const d = parseISO(s.created_at);
           return d.getMonth() === prevMonth.getMonth() && d.getFullYear() === prevMonth.getFullYear();
         });
         label = format(prevMonth, "MMMM yyyy", { locale: es });
-        groupBy = "day";
+        group = "day";
         break;
-      case "prev_prev_month":
+      }
+      case "prev_prev_month": {
         const prevPrevMonth = subMonths(startOfMonth(now), 2);
-        filteredSales = sales.filter(s => {
+        filtered = sales.filter(s => {
           const d = parseISO(s.created_at);
           return d.getMonth() === prevPrevMonth.getMonth() && d.getFullYear() === prevPrevMonth.getFullYear();
         });
         label = format(prevPrevMonth, "MMMM yyyy", { locale: es });
-        groupBy = "day";
+        group = "day";
         break;
+      }
       case "all_time":
         label = "Desde siempre";
-        groupBy = "month";
+        group = "month";
         break;
       case "custom":
         label = "Personalizado";
-        groupBy = "day"; // Simple fallback
+        group = "day";
         break;
     }
 
-    return { filteredSales, label, groupBy };
-  };
+    return { filteredSales: filtered, label, groupBy: group };
+  }, [sales, dateFilter]);
 
-  const { filteredSales, label: filterLabel, groupBy } = getFilteredSales();
+  // ——— Chart Data (memoized, O(n) with Map instead of O(n×b) with find) ———
 
-  // Generate Chart Data based on grouping
-  const generateChartData = () => {
-    let data: { time: string, total: number }[] = [];
+  const chartData = useMemo(() => {
+    const now = new Date();
+    let data: { time: string; total: number }[] = [];
 
     if (groupBy === "hour") {
       data = Array.from({ length: 15 }, (_, i) => ({ time: `${i + 6}:00`, total: 0 }));
+      const hourMap = new Map(data.map(d => [d.time, d]));
       filteredSales.forEach(sale => {
-        const d = parseISO(sale.created_at);
-        const hourFormat = `${d.getHours()}:00`;
-        const bin = data.find(h => h.time === hourFormat);
+        const hourFormat = `${parseISO(sale.created_at).getHours()}:00`;
+        const bin = hourMap.get(hourFormat);
         if (bin) bin.total += sale.total_amount;
       });
     } else if (groupBy === "day") {
-      const now = new Date();
       let start = subDays(now, 7);
       let end = now;
       if (dateFilter === "28days") start = subDays(now, 28);
@@ -192,28 +205,23 @@ export default function Dashboard() {
 
       const days = eachDayOfInterval({ start, end });
       data = days.map(d => ({ time: format(d, "dd MMM", { locale: es }), total: 0 }));
-
+      const dayMap = new Map(data.map(d => [d.time, d]));
       filteredSales.forEach(sale => {
-        const d = parseISO(sale.created_at);
-        const dayFormat = format(d, "dd MMM", { locale: es });
-        const bin = data.find(h => h.time === dayFormat);
+        const dayFormat = format(parseISO(sale.created_at), "dd MMM", { locale: es });
+        const bin = dayMap.get(dayFormat);
         if (bin) bin.total += sale.total_amount;
       });
     } else if (groupBy === "week") {
-      const now = new Date();
       const start = subDays(now, 90);
-      const end = now;
-      const weeks = eachWeekOfInterval({ start, end });
+      const weeks = eachWeekOfInterval({ start, end: now });
       data = weeks.map(d => ({ time: `Sem. ${format(d, "w", { locale: es })}`, total: 0 }));
-
+      const weekMap = new Map(data.map(d => [d.time, d]));
       filteredSales.forEach(sale => {
-        const d = parseISO(sale.created_at);
-        const weekFormat = `Sem. ${format(d, "w", { locale: es })}`;
-        const bin = data.find(h => h.time === weekFormat);
+        const weekFormat = `Sem. ${format(parseISO(sale.created_at), "w", { locale: es })}`;
+        const bin = weekMap.get(weekFormat);
         if (bin) bin.total += sale.total_amount;
       });
     } else if (groupBy === "month") {
-      const now = new Date();
       let start = subDays(now, 365);
       let end = now;
       if (dateFilter === "prev_year") {
@@ -230,19 +238,32 @@ export default function Dashboard() {
 
       const months = eachMonthOfInterval({ start, end });
       data = months.map(d => ({ time: format(d, "MMM yy", { locale: es }), total: 0 }));
-
+      const monthMap = new Map(data.map(d => [d.time, d]));
       filteredSales.forEach(sale => {
-        const d = parseISO(sale.created_at);
-        const monthFormat = format(d, "MMM yy", { locale: es });
-        const bin = data.find(h => h.time === monthFormat);
+        const monthFormat = format(parseISO(sale.created_at), "MMM yy", { locale: es });
+        const bin = monthMap.get(monthFormat);
         if (bin) bin.total += sale.total_amount;
       });
     }
 
     return data;
-  };
+  }, [filteredSales, groupBy, dateFilter]);
 
-  const chartData = generateChartData();
+  // ——— Recent movements (memoized sort + slice) ———
+
+  const recentMovements = useMemo(() => {
+    // Build product name lookup Map once — O(m)
+    const productMap = new Map(products.map(p => [p.id, p.name]));
+    return [...movements]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 5)
+      .map(mov => ({
+        ...mov,
+        productName: productMap.get(mov.product_id) || "Producto Eliminado",
+      }));
+  }, [movements, products]);
+
+  if (!mounted) return <div className="p-8">Cargando dashboard...</div>;
 
   return (
     <div className="flex-1 space-y-4 sm:space-y-6 p-4 sm:p-8 pt-4 sm:pt-6 overflow-hidden">
@@ -263,7 +284,7 @@ export default function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">S/ {todaysRevenue.toFixed(2)}</div>
             <p className="text-xs text-slate-500 mt-1">
-              En {todaysSalesCount} transacciones
+              En {todaysSales.length} transacciones
             </p>
           </CardContent>
         </Card>
@@ -300,7 +321,7 @@ export default function Dashboard() {
             <AlertTriangle className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{products.filter(p => p.stock <= p.min_stock).length}</div>
+            <div className="text-2xl font-bold">{atRiskCount}</div>
             <p className="text-xs text-slate-500 mt-1">
               Unidades bajo el mínimo
             </p>
@@ -341,40 +362,7 @@ export default function Dashboard() {
             </DropdownMenu>
           </CardHeader>
           <CardContent className="pl-0 border-t border-slate-100 pt-4">
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis
-                  dataKey="time"
-                  stroke="#64748b"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={10}
-                />
-                <YAxis
-                  stroke="#64748b"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) => `S/ ${value}`}
-                  width={60}
-                />
-                <Tooltip
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  formatter={(value: any) => [`S/ ${value.toFixed(2)}`, 'Ventas']}
-                  labelStyle={{ color: '#0f172a', fontWeight: 'bold', marginBottom: '4px', textTransform: 'capitalize' }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="total"
-                  stroke="#3b82f6"
-                  strokeWidth={3}
-                  dot={{ r: 4, strokeWidth: 2, fill: "#ffffff" }}
-                  activeDot={{ r: 6, stroke: "#3b82f6", strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <SalesChart data={chartData} />
           </CardContent>
         </Card>
 
@@ -439,45 +427,42 @@ export default function Dashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {movements.slice(0, 5).map((mov) => {
-                const product = products.find(p => p.id === mov.product_id);
-                return (
-                  <TableRow key={mov.id}>
-                    <TableCell className="text-sm text-slate-500">
-                      {format(parseISO(mov.created_at), "dd MMM, HH:mm", { locale: es })}
-                    </TableCell>
-                    <TableCell className="font-medium text-slate-800">
-                      {product?.name || "Producto Eliminado"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={`
-                        ${mov.movement_type === 'AUTOMATIZACION' ? 'border-purple-200 bg-purple-50 text-purple-700' : ''}
-                        ${mov.movement_type === 'MANUAL' ? (mov.quantity_changed > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700') : ''}
-                        ${mov.movement_type === 'COMPRA' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : ''}
-                        ${mov.movement_type === 'AJUSTE' ? (mov.quantity_changed > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-orange-200 bg-orange-50 text-orange-700') : ''}
-                        ${mov.movement_type === 'CARGA_INICIAL' ? 'border-slate-200 bg-slate-50 text-slate-700' : ''}
-                      `}>
-                        {mov.movement_type === 'AUTOMATIZACION' && 'BOT Automatización'}
-                        {mov.movement_type === 'MANUAL' && (mov.quantity_changed > 0 ? 'Ingreso Manual' : 'Venta Manual')}
-                        {mov.movement_type === 'AJUSTE' && (mov.quantity_changed > 0 ? 'Ajuste Positivo' : 'Ajuste Negativo')}
-                        {mov.movement_type === 'COMPRA' && 'Ingreso Proveedor'}
-                        {mov.movement_type === 'CARGA_INICIAL' && 'Carga Inicial'}
-                        {![
-                          'AUTOMATIZACION', 'MANUAL', 'AJUSTE', 'COMPRA', 'CARGA_INICIAL'
-                        ].includes(mov.movement_type) && mov.movement_type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={`font-medium ${mov.quantity_changed > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                        {mov.quantity_changed > 0 ? '+' : ''}{mov.quantity_changed}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right font-bold">
-                      {mov.new_stock}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {recentMovements.map((mov) => (
+                <TableRow key={mov.id}>
+                  <TableCell className="text-sm text-slate-500">
+                    {format(parseISO(mov.created_at), "dd MMM, HH:mm", { locale: es })}
+                  </TableCell>
+                  <TableCell className="font-medium text-slate-800">
+                    {mov.productName}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={`
+                      ${mov.movement_type === 'AUTOMATIZACION' ? 'border-purple-200 bg-purple-50 text-purple-700' : ''}
+                      ${mov.movement_type === 'MANUAL' ? (mov.quantity_changed > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-blue-200 bg-blue-50 text-blue-700') : ''}
+                      ${mov.movement_type === 'COMPRA' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : ''}
+                      ${mov.movement_type === 'AJUSTE' ? (mov.quantity_changed > 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-orange-200 bg-orange-50 text-orange-700') : ''}
+                      ${mov.movement_type === 'CARGA_INICIAL' ? 'border-slate-200 bg-slate-50 text-slate-700' : ''}
+                    `}>
+                      {mov.movement_type === 'AUTOMATIZACION' && 'BOT Automatización'}
+                      {mov.movement_type === 'MANUAL' && (mov.quantity_changed > 0 ? 'Ingreso Manual' : 'Venta Manual')}
+                      {mov.movement_type === 'AJUSTE' && (mov.quantity_changed > 0 ? 'Ajuste Positivo' : 'Ajuste Negativo')}
+                      {mov.movement_type === 'COMPRA' && 'Ingreso Proveedor'}
+                      {mov.movement_type === 'CARGA_INICIAL' && 'Carga Inicial'}
+                      {![
+                        'AUTOMATIZACION', 'MANUAL', 'AJUSTE', 'COMPRA', 'CARGA_INICIAL'
+                      ].includes(mov.movement_type) && mov.movement_type}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className={`font-medium ${mov.quantity_changed > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                      {mov.quantity_changed > 0 ? '+' : ''}{mov.quantity_changed}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right font-bold">
+                    {mov.new_stock}
+                  </TableCell>
+                </TableRow>
+              ))}
               {movements.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-6 text-slate-500">

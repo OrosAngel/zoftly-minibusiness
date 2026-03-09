@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useStore, Product, PaymentMethod } from "@/store";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Landmark, UserPlus, Package } from "lucide-react";
+import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Landmark, UserPlus, Package, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { useHydration } from "@/hooks/use-hydration";
 
 interface CartItem {
     product: Product;
@@ -15,7 +16,7 @@ interface CartItem {
 }
 
 export default function POSPage() {
-    const [mounted, setMounted] = useState(false);
+    const mounted = useHydration();
     const products = useStore((state) => state.products);
     const categories = useStore((state) => state.categories);
     const customers = useStore((state) => state.customers);
@@ -23,22 +24,33 @@ export default function POSPage() {
 
     const [search, setSearch] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
     const [cart, setCart] = useState<CartItem[]>([]);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("EFECTIVO");
     const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+    const [isProcessing, setIsProcessing] = useState(false);
+    const lastActionTime = useRef(0);
 
     useEffect(() => {
-        setMounted(true);
-    }, []);
+        setCurrentPage(1);
+    }, [search, selectedCategory]);
 
-    if (!mounted) return <div className="p-8">Cargando POS...</div>;
+    const filteredProducts = useMemo(() => {
+        const lowerSearch = search.toLowerCase();
+        return products.filter(p =>
+            (selectedCategory === "ALL" || p.category_id === selectedCategory) &&
+            (p.name.toLowerCase().includes(lowerSearch) || p.barcode.includes(search))
+        );
+    }, [products, search, selectedCategory]);
 
-    const filteredProducts = products.filter(p =>
-        (selectedCategory === "ALL" || p.category_id === selectedCategory) &&
-        (p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode.includes(search))
+    const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+    const paginatedProducts = useMemo(
+        () => filteredProducts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+        [filteredProducts, currentPage, itemsPerPage]
     );
 
-    const addToCart = (product: Product) => {
+    const addToCart = useCallback((product: Product) => {
         if (product.stock <= 0) {
             toast.error("Sin stock", { description: "Este producto está agotado." });
             return;
@@ -58,9 +70,9 @@ export default function POSPage() {
             }
             return [...prev, { product, quantity: 1 }];
         });
-    };
+    }, []);
 
-    const updateQuantity = (productId: string, delta: number) => {
+    const updateQuantity = useCallback((productId: string, delta: number) => {
         setCart(prev => prev.map(item => {
             if (item.product.id === productId) {
                 const newQ = item.quantity + delta;
@@ -69,17 +81,27 @@ export default function POSPage() {
             }
             return item;
         }).filter(item => item.quantity > 0));
-    };
+    }, []);
 
-    const total = cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
+    const total = useMemo(
+        () => cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0),
+        [cart]
+    );
+
+    if (!mounted) return <div className="p-8">Cargando POS...</div>;
 
     const handleCheckout = async () => {
-        if (cart.length === 0) return;
+        const now = Date.now();
+        if (now - lastActionTime.current < 2000) return; // Bloquear clicks en un margen de 2 segundos
+        lastActionTime.current = now;
+
+        if (cart.length === 0 || isProcessing) return;
         if (paymentMethod === "FIADO" && !selectedCustomer) {
             toast.error("Cliente requerido", { description: "Para ventas al fiado, seleccione un cliente." });
             return;
         }
 
+        setIsProcessing(true);
         try {
             await processSale(cart, paymentMethod, paymentMethod === "FIADO" ? selectedCustomer : undefined);
 
@@ -93,6 +115,8 @@ export default function POSPage() {
             setSelectedCustomer("");
         } catch (error) {
             toast.error("Error procesando venta", { description: "Hubo un problema de conexión. Intente de nuevo." });
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -126,7 +150,7 @@ export default function POSPage() {
 
                 <div className="flex-1 overflow-y-auto pr-2 pb-2">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                        {filteredProducts.map(product => (
+                        {paginatedProducts.map(product => (
                             <Card
                                 key={product.id}
                                 className={`cursor-pointer transition-all hover:shadow-md hover:border-blue-400 active:scale-95 ${product.stock <= 0 ? "opacity-50 grayscale" : ""}`}
@@ -143,7 +167,7 @@ export default function POSPage() {
                                 </CardContent>
                             </Card>
                         ))}
-                        {filteredProducts.length === 0 && (
+                        {paginatedProducts.length === 0 && (
                             <div className="col-span-full py-20 text-center text-slate-500">
                                 <Package className="mx-auto h-12 w-12 text-slate-300 mb-4" />
                                 <p>No se encontraron productos.</p>
@@ -151,6 +175,35 @@ export default function POSPage() {
                         )}
                     </div>
                 </div>
+
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-2 pt-4 shrink-0 mt-auto border-t border-slate-200/60">
+                        <div className="flex items-center space-x-2 w-full justify-between sm:w-auto">
+                            <Button
+                                variant="outline"
+                                className="bg-white shadow-sm"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                Anterior
+                            </Button>
+                            <span className="text-sm font-medium text-slate-600 sm:hidden">
+                                {currentPage} / {totalPages}
+                            </span>
+                            <Button
+                                variant="outline"
+                                className="bg-white shadow-sm"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages || totalPages === 0}
+                            >
+                                Siguiente
+                            </Button>
+                        </div>
+                        <p className="text-sm text-slate-500 hidden sm:block">
+                            Página <span className="font-medium text-slate-900">{currentPage}</span> de <span className="font-medium text-slate-900">{totalPages}</span>
+                        </p>
+                    </div>
+                )}
             </div>
 
             {/* Carrito de Compras (Panel Lateral o Inferior) */}
@@ -255,10 +308,14 @@ export default function POSPage() {
                         <Button
                             className="w-full h-14 text-lg font-bold shadow-lg shadow-blue-500/30 transition-transform active:scale-[0.98]"
                             size="lg"
-                            disabled={cart.length === 0}
+                            disabled={cart.length === 0 || isProcessing}
                             onClick={handleCheckout}
                         >
-                            COBRAR AHORA
+                            {isProcessing ? (
+                                <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> PROCESANDO...</>
+                            ) : (
+                                "COBRAR AHORA"
+                            )}
                         </Button>
                     </div>
                 </div>

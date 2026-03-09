@@ -1,29 +1,35 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useStore, MovementType } from "@/store";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useStore, MovementType, InventoryMovement } from "@/store";
+import { useHydration } from "@/hooks/use-hydration";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Search, History, ArrowDownRight, ArrowUpRight, Zap, Edit3, ShoppingBag, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 export default function MovementsPage() {
-    const [mounted, setMounted] = useState(false);
+    const mounted = useHydration();
     const movements = useStore((state) => state.movements);
     const products = useStore((state) => state.products);
     const [search, setSearch] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
 
+    // Reset page to 1 if search changes
     useEffect(() => {
-        setMounted(true);
-    }, []);
+        setCurrentPage(1);
+    }, [search]);
 
-    if (!mounted) return <div className="p-8">Cargando movimientos...</div>;
+    // Build product name lookup Map once — O(m) instead of O(n×m)
+    const productNameMap = useMemo(() => new Map(products.map(p => [p.id, p.name])), [products]);
 
-    const getProductName = (id: string) => products.find(p => p.id === id)?.name || "Producto Desconocido";
+    const getProductName = useCallback((id: string) => productNameMap.get(id) || "Producto Desconocido", [productNameMap]);
 
-    const getMovementConfig = (movement: any) => {
+    const getMovementConfig = (movement: InventoryMovement) => {
         switch (movement.movement_type) {
             case "AUTOMATIZACION":
                 return { color: "bg-purple-100 text-purple-700", icon: <Zap className="h-3 w-3 mr-1" />, label: "BOT Automatización" };
@@ -46,10 +52,23 @@ export default function MovementsPage() {
         }
     };
 
-    const filteredMovements = movements.filter(m => {
-        const productName = getProductName(m.product_id).toLowerCase();
-        return productName.includes(search.toLowerCase());
-    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const filteredMovements = useMemo(() => {
+        const sorted = [...movements].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        if (!search.trim()) return sorted;
+        const lowerSearch = search.toLowerCase();
+        return sorted.filter(m => {
+            const productName = productNameMap.get(m.product_id) || "";
+            return productName.toLowerCase().includes(lowerSearch);
+        });
+    }, [movements, search, productNameMap]);
+
+    const totalPages = Math.ceil(filteredMovements.length / itemsPerPage);
+    const paginatedMovements = useMemo(
+        () => filteredMovements.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+        [filteredMovements, currentPage, itemsPerPage]
+    );
+
+    if (!mounted) return <div className="p-8">Cargando movimientos...</div>;
 
     return (
         <div className="flex-1 space-y-4 sm:space-y-6 p-4 sm:p-8 pt-4 sm:pt-6 max-w-6xl mx-auto overflow-hidden">
@@ -90,7 +109,7 @@ export default function MovementsPage() {
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredMovements.map((movement) => {
+                                paginatedMovements.map((movement) => {
                                     const config = getMovementConfig(movement);
                                     const isPositive = movement.quantity_changed > 0;
                                     const isNegative = movement.quantity_changed < 0;
@@ -126,6 +145,31 @@ export default function MovementsPage() {
                         </TableBody>
                     </Table>
                 </div>
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-2 py-4 border-t border-slate-200 mt-2 bg-slate-50 rounded-b-md">
+                        <p className="text-sm text-slate-500">
+                            Página <span className="font-medium text-slate-900">{currentPage}</span> de <span className="font-medium text-slate-900">{totalPages}</span>
+                        </p>
+                        <div className="flex items-center space-x-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                Anterior
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages || totalPages === 0}
+                            >
+                                Siguiente
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

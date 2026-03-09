@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useStore } from "@/store";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useStore, Customer } from "@/store";
+import { useHydration } from "@/hooks/use-hydration";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,13 +13,24 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 export default function CustomersPage() {
-    const [mounted, setMounted] = useState(false);
+    const mounted = useHydration();
     const customers = useStore((state) => state.customers);
     const deleteCustomer = useStore((state) => state.deleteCustomer);
     const addCustomer = useStore((state) => state.addCustomer);
     const updateCustomer = useStore((state) => state.updateCustomer);
 
     const [search, setSearch] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
+    const [isProcessing, setIsProcessing] = useState(false);
+    const lastActionTime = useRef(0);
+
+    const checkThrottle = () => {
+        const now = Date.now();
+        if (now - lastActionTime.current < 2000) return false;
+        lastActionTime.current = now;
+        return true;
+    };
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [newCustomer, setNewCustomer] = useState({ first_name: '', last_name: '', phone: '', description: '', total_debt: 0 });
@@ -35,34 +47,52 @@ export default function CustomersPage() {
     };
 
     useEffect(() => {
-        setMounted(true);
-    }, []);
+        setCurrentPage(1);
+    }, [search]);
+
+    const filteredCustomers = useMemo(() => {
+        if (!search.trim()) return customers;
+        const lowerSearch = search.toLowerCase();
+        return customers.filter(c =>
+            (c.first_name?.toLowerCase() || "").includes(lowerSearch) ||
+            (c.last_name?.toLowerCase() || "").includes(lowerSearch) ||
+            (c.phone || "").includes(search)
+        );
+    }, [customers, search]);
+
+    const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+    const paginatedCustomers = useMemo(
+        () => filteredCustomers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+        [filteredCustomers, currentPage, itemsPerPage]
+    );
 
     if (!mounted) return <div className="p-8">Cargando clientes...</div>;
 
-    const filteredCustomers = customers.filter(c =>
-        (c.first_name?.toLowerCase() || "").includes(search.toLowerCase()) ||
-        (c.last_name?.toLowerCase() || "").includes(search.toLowerCase()) ||
-        (c.phone || "").includes(search)
-    );
-
     const handleDelete = async (id: string, name: string) => {
+        if (!checkThrottle()) return;
+        if (isProcessing) return;
         if (confirm(`¿Está seguro de eliminar al cliente "${name}"?`)) {
+            setIsProcessing(true);
             try {
                 await deleteCustomer(id);
                 toast.success("Cliente eliminado exitosamente");
             } catch (error) {
                 toast.error("Error de red", { description: "No se pudo eliminar el cliente." });
+            } finally {
+                setIsProcessing(false);
             }
         }
     };
 
     const handleAddCustomer = async () => {
+        if (!checkThrottle()) return;
+        if (isProcessing) return;
         if (!newCustomer.first_name || !newCustomer.last_name) {
             toast.error("Datos incompletos", { description: "El nombre y apellido son obligatorios" });
             return;
         }
 
+        setIsProcessing(true);
         try {
             await addCustomer(newCustomer);
             toast.success("Cliente creado exitosamente");
@@ -70,15 +100,20 @@ export default function CustomersPage() {
             setNewCustomer({ first_name: '', last_name: '', phone: '', description: '', total_debt: 0 });
         } catch (error) {
             toast.error("Error de red", { description: "No se pudo crear el cliente." });
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     const handleEditCustomer = async () => {
+        if (!checkThrottle()) return;
+        if (isProcessing) return;
         if (!currentCustomer.first_name || !currentCustomer.last_name) {
             toast.error("Datos incompletos", { description: "El nombre y apellido son obligatorios" });
             return;
         }
 
+        setIsProcessing(true);
         try {
             await updateCustomer(currentCustomer.id, {
                 first_name: currentCustomer.first_name,
@@ -91,10 +126,12 @@ export default function CustomersPage() {
             setIsEditDialogOpen(false);
         } catch (error) {
             toast.error("Error de red", { description: "No se pudo actualizar el cliente." });
+        } finally {
+            setIsProcessing(false);
         }
     };
 
-    const openEditDialog = (customer: any) => {
+    const openEditDialog = (customer: Customer) => {
         setCurrentCustomer({
             id: customer.id,
             first_name: customer.first_name || '',
@@ -152,7 +189,7 @@ export default function CustomersPage() {
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredCustomers.map((customer) => (
+                                paginatedCustomers.map((customer) => (
                                     <TableRow key={customer.id}>
                                         <TableCell className="font-medium text-slate-800">
                                             {customer.first_name} {customer.last_name}
@@ -168,7 +205,7 @@ export default function CustomersPage() {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end space-x-1">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" title="Editar" onClick={() => openEditDialog(customer)}>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" title="Editar" onClick={() => openEditDialog(customer)} disabled={isProcessing}>
                                                     <Edit className="h-4 w-4" />
                                                 </Button>
                                                 <Button
@@ -177,6 +214,7 @@ export default function CustomersPage() {
                                                     className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
                                                     onClick={() => handleDelete(customer.id, `${customer.first_name} ${customer.last_name}`)}
                                                     title="Eliminar"
+                                                    disabled={isProcessing}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
@@ -188,6 +226,31 @@ export default function CustomersPage() {
                         </TableBody>
                     </Table>
                 </div>
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-2 py-4 border-t border-slate-200 mt-2 bg-slate-50 rounded-b-md">
+                        <p className="text-sm text-slate-500">
+                            Página <span className="font-medium text-slate-900">{currentPage}</span> de <span className="font-medium text-slate-900">{totalPages}</span>
+                        </p>
+                        <div className="flex items-center space-x-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                Anterior
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages || totalPages === 0}
+                            >
+                                Siguiente
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -258,8 +321,10 @@ export default function CustomersPage() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleAddCustomer} className="bg-blue-600 hover:bg-blue-700">Guardar Cliente</Button>
+                        <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isProcessing}>Cancelar</Button>
+                        <Button onClick={handleAddCustomer} className="bg-blue-600 hover:bg-blue-700" disabled={isProcessing}>
+                            {isProcessing ? "Guardando..." : "Guardar Cliente"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -328,8 +393,10 @@ export default function CustomersPage() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleEditCustomer} className="bg-blue-600 hover:bg-blue-700">Actualizar Cambios</Button>
+                        <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isProcessing}>Cancelar</Button>
+                        <Button onClick={handleEditCustomer} className="bg-blue-600 hover:bg-blue-700" disabled={isProcessing}>
+                            {isProcessing ? "Actualizando..." : "Actualizar Cambios"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useStore } from "@/store";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -10,24 +10,32 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, parseISO, isSameDay, isSameWeek, isSameMonth, isSameQuarter, isSameYear } from "date-fns";
 import { es } from "date-fns/locale";
-import ExcelJS from "exceljs";
 import { toast } from "sonner";
+import { useHydration } from "@/hooks/use-hydration";
 
 export default function ReportsPage() {
-    const [mounted, setMounted] = useState(false);
+    const mounted = useHydration();
     const sales = useStore((state) => state.sales);
     const saleItems = useStore((state) => state.saleItems);
     const products = useStore((state) => state.products);
     const customers = useStore((state) => state.customers);
     const [search, setSearch] = useState("");
     const [timeFilter, setTimeFilter] = useState("all");
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
 
     useEffect(() => {
-        setMounted(true);
-    }, []);
+        setCurrentPage(1);
+    }, [timeFilter]);
+
+    // Memoized customer name lookup
+    const customerMap = useMemo(
+        () => new Map(customers.map(c => [c.id, `${c.first_name} ${c.last_name}`])),
+        [customers]
+    );
 
     // Filter sales based on selected timeframe
-    const filteredSales = sales.filter(sale => {
+    const filteredSales = useMemo(() => sales.filter(sale => {
         if (timeFilter === "all") return true;
         const saleDate = parseISO(sale.created_at);
         const now = new Date();
@@ -37,13 +45,14 @@ export default function ReportsPage() {
         if (timeFilter === "quarter") return isSameQuarter(saleDate, now);
         if (timeFilter === "year") return isSameYear(saleDate, now);
         return true;
-    });
+    }), [sales, timeFilter]);
 
 
 
 
-    const exportCierreCaja = async () => {
+    const exportCierreCaja = useCallback(async () => {
         try {
+            const ExcelJS = (await import("exceljs")).default;
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet("Cierre de Caja");
 
@@ -96,10 +105,11 @@ export default function ReportsPage() {
             console.error(error);
             toast.error("Error al generar Excel", { description: "Ocurrió un problema al construir el archivo." });
         }
-    };
+    }, [filteredSales, customerMap]);
 
-    const exportInventarioValorizado = async () => {
+    const exportInventarioValorizado = useCallback(async () => {
         try {
+            const ExcelJS = (await import("exceljs")).default;
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet("Inventario Valorizado");
 
@@ -148,11 +158,15 @@ export default function ReportsPage() {
             console.error(error);
             toast.error("Error al generar Excel");
         }
-    }
+    }, [products]);
 
     if (!mounted) return <div className="p-8">Cargando reportes...</div>;
 
-    const recentSales = filteredSales.slice(0, 10);
+    const totalPages = Math.ceil(filteredSales.length / itemsPerPage);
+    const paginatedSales = filteredSales.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
 
     return (
         <div className="flex-1 space-y-4 sm:space-y-6 p-4 sm:p-8 pt-4 sm:pt-6 max-w-7xl mx-auto overflow-hidden">
@@ -214,7 +228,7 @@ export default function ReportsPage() {
 
             <div className="mt-8 border-t border-slate-200 pt-8 overflow-hidden flex flex-col">
                 <h3 className="text-xl font-bold mb-6 text-slate-800 flex items-center justify-between">
-                    <span className="flex items-center"><Calendar className="mr-2 h-5 w-5 text-slate-500" /> Vista Previa: Últimas Ventas ({filteredSales.length})</span>
+                    <span className="flex items-center"><Calendar className="mr-2 h-5 w-5 text-slate-500" /> Registro de Ventas ({filteredSales.length})</span>
                 </h3>
 
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
@@ -228,14 +242,14 @@ export default function ReportsPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {recentSales.length === 0 ? (
+                            {paginatedSales.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={4} className="text-center h-24 text-slate-500">
                                         No hay ventas registradas.
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                recentSales.map((sale) => {
+                                paginatedSales.map((sale) => {
                                     let customerName = "Público General";
                                     const isFiado = sale.payment_method === "FIADO";
 
@@ -272,6 +286,31 @@ export default function ReportsPage() {
                         </TableBody>
                     </Table>
                 </div>
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-2 py-4 border-t border-slate-200 mt-2 bg-slate-50 rounded-b-md">
+                        <p className="text-sm text-slate-500">
+                            Página <span className="font-medium text-slate-900">{currentPage}</span> de <span className="font-medium text-slate-900">{totalPages}</span>
+                        </p>
+                        <div className="flex items-center space-x-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                Anterior
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages || totalPages === 0}
+                            >
+                                Siguiente
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

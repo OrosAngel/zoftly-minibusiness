@@ -51,8 +51,9 @@ export function Sidebar() {
   const navigation = userRole === 'ADMIN' ? adminNavigation : businessNavigation;
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const user = session.user;
         if (user.email) setUserEmail(user.email);
 
         const fullName = user.user_metadata?.full_name || "";

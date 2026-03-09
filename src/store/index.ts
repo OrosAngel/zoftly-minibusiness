@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { v4 as uuidv4 } from "uuid";
 import { supabase } from "@/lib/supabase";
 
 export type MovementType = "CARGA_INICIAL" | "AUTOMATIZACION" | "MANUAL" | "COMPRA" | "AJUSTE";
@@ -149,18 +148,24 @@ export const useStore = create<ZoftlytechStore>()(
             fetchInventoryData: async () => {
                 const state = get();
                 if (!state.currentStore?.id) return;
+                const storeId = state.currentStore.id;
 
-                const [categoriesRes, suppliersRes, productsRes, customersRes, salesRes, saleItemsRes, movementsRes] = await Promise.all([
-                    supabase.from('categories').select('*').eq('store_id', state.currentStore.id),
-                    supabase.from('suppliers').select('*').eq('store_id', state.currentStore.id),
-                    supabase.from('products').select('*').eq('store_id', state.currentStore.id),
-                    supabase.from('customers').select('*').eq('store_id', state.currentStore.id),
-                    supabase.from('sales').select('*').eq('store_id', state.currentStore.id),
-                    // sale_items doesn't have a direct store_id but we can join, wait, actually we can fetch all sale_items for the sales of this store
-                    // For MVP let's just use the RLS policies: our user is authenticated so they will only get their own data, so we can just select all for now since RLS handles it
-                    supabase.from('sale_items').select('*'),
-                    supabase.from('inventory_movements').select('*').eq('store_id', state.currentStore.id)
+                const [categoriesRes, suppliersRes, productsRes, customersRes, salesRes, movementsRes] = await Promise.all([
+                    supabase.from('categories').select('*').eq('store_id', storeId),
+                    supabase.from('suppliers').select('*').eq('store_id', storeId),
+                    supabase.from('products').select('*').eq('store_id', storeId),
+                    supabase.from('customers').select('*').eq('store_id', storeId),
+                    supabase.from('sales').select('*').eq('store_id', storeId).order('created_at', { ascending: false }),
+                    supabase.from('inventory_movements').select('*').eq('store_id', storeId).order('created_at', { ascending: false })
                 ]);
+
+                // Fetch sale_items filtered by this store's sale IDs
+                const saleIds = (salesRes.data || []).map((s: Sale) => s.id);
+                let saleItemsData: SaleItem[] = [];
+                if (saleIds.length > 0) {
+                    const { data } = await supabase.from('sale_items').select('*').in('sale_id', saleIds);
+                    saleItemsData = data || [];
+                }
 
                 set({
                     categories: categoriesRes.data || [],
@@ -168,7 +173,7 @@ export const useStore = create<ZoftlytechStore>()(
                     products: productsRes.data || [],
                     customers: customersRes.data || [],
                     sales: salesRes.data || [],
-                    saleItems: saleItemsRes.data || [],
+                    saleItems: saleItemsData,
                     movements: movementsRes.data || []
                 });
             },
@@ -370,23 +375,21 @@ export const useStore = create<ZoftlytechStore>()(
                 const state = get();
                 if (!state.currentStore?.id) return;
 
-                const saleId = uuidv4();
                 let totalAmount = 0;
-
-                const newSaleItems: SaleItem[] = [];
-                const newMovements: InventoryMovement[] = [];
                 const updatedProducts = [...state.products];
-
                 const storeId = state.currentStore.id;
                 const now = new Date().toISOString();
+
+                // Prepare data without generating client-side IDs
+                const stockUpdates: { productId: string; newStock: number }[] = [];
+                const saleItemsToInsert: Omit<SaleItem, 'id' | 'sale_id'>[] = [];
+                const movementsToInsert: Omit<InventoryMovement, 'id' | 'created_at'>[] = [];
 
                 for (const item of items) {
                     const subtotal = item.quantity * item.product.price;
                     totalAmount += subtotal;
 
-                    newSaleItems.push({
-                        id: uuidv4(),
-                        sale_id: saleId,
+                    saleItemsToInsert.push({
                         product_id: item.product.id,
                         quantity: item.quantity,
                         unit_price: item.product.price,
@@ -397,72 +400,77 @@ export const useStore = create<ZoftlytechStore>()(
                     if (pIndex !== -1) {
                         const currentStock = updatedProducts[pIndex].stock;
                         const newStock = currentStock - item.quantity;
-                        updatedProducts[pIndex] = {
-                            ...updatedProducts[pIndex],
-                            stock: newStock
-                        };
+                        updatedProducts[pIndex] = { ...updatedProducts[pIndex], stock: newStock };
 
-                        newMovements.push({
-                            id: uuidv4(),
+                        stockUpdates.push({ productId: item.product.id, newStock });
+
+                        movementsToInsert.push({
                             store_id: storeId,
                             product_id: item.product.id,
-                            movement_type: "MANUAL", // Venta en POS
+                            movement_type: "MANUAL",
                             quantity_changed: -item.quantity,
                             previous_stock: currentStock,
                             new_stock: newStock,
-                            created_at: now,
                         });
-
-                        // DB Update product stock
-                        await supabase.from('products').update({ stock: newStock }).eq('id', item.product.id);
                     }
                 }
 
-                const newSale: Sale = {
-                    id: saleId,
-                    store_id: storeId,
-                    total_amount: totalAmount,
-                    payment_method: paymentMethod,
-                    customer_id: customerId || undefined,
-                    created_at: now,
-                };
-
-                // DB Insert Sale
-                const dbSale = { ...newSale, customer_id: newSale.customer_id || null };
-                const { error: saleError } = await supabase.from('sales').insert(dbSale);
+                // DB Insert Sale (let Supabase generate the ID)
+                const { data: insertedSale, error: saleError } = await supabase
+                    .from('sales')
+                    .insert({
+                        store_id: storeId,
+                        total_amount: totalAmount,
+                        payment_method: paymentMethod,
+                        customer_id: customerId || null,
+                    })
+                    .select()
+                    .single();
                 if (saleError) throw saleError;
 
-                // DB Insert Sale Items
-                if (newSaleItems.length > 0) {
-                    const { error: itemsError } = await supabase.from('sale_items').insert(newSaleItems);
-                    if (itemsError) throw itemsError;
-                }
+                // Batch: Update all product stocks in parallel
+                const stockPromises = stockUpdates.map(({ productId, newStock }) =>
+                    supabase.from('products').update({ stock: newStock }).eq('id', productId)
+                );
 
-                // DB Insert Movements
-                if (newMovements.length > 0) {
-                    const { error: movesError } = await supabase.from('inventory_movements').insert(newMovements);
-                    if (movesError) throw movesError;
-                }
+                // DB Insert Sale Items with the server-generated sale ID
+                const saleItemsWithSaleId = saleItemsToInsert.map(item => ({
+                    ...item,
+                    sale_id: insertedSale.id,
+                }));
 
+                // Run stock updates, sale items insert, and movements insert in parallel
+                const [stockResults, itemsResult, movesResult] = await Promise.all([
+                    Promise.all(stockPromises),
+                    saleItemsWithSaleId.length > 0
+                        ? supabase.from('sale_items').insert(saleItemsWithSaleId).select()
+                        : Promise.resolve({ data: [], error: null }),
+                    movementsToInsert.length > 0
+                        ? supabase.from('inventory_movements').insert(movementsToInsert).select()
+                        : Promise.resolve({ data: [], error: null }),
+                ]);
+
+                if (itemsResult.error) throw itemsResult.error;
+                if (movesResult.error) throw movesResult.error;
+
+                // Handle FIADO customer debt
                 const updatedCustomers = [...state.customers];
                 if (paymentMethod === "FIADO" && customerId) {
                     const cIndex = updatedCustomers.findIndex(c => c.id === customerId);
                     if (cIndex !== -1) {
                         const newDebt = updatedCustomers[cIndex].total_debt + totalAmount;
-                        updatedCustomers[cIndex] = {
-                            ...updatedCustomers[cIndex],
-                            total_debt: newDebt
-                        };
-                        // DB Update Customer Debt
+                        updatedCustomers[cIndex] = { ...updatedCustomers[cIndex], total_debt: newDebt };
                         await supabase.from('customers').update({ total_debt: newDebt }).eq('id', customerId);
                     }
                 }
 
+                const newSale: Sale = { ...insertedSale, customer_id: customerId || undefined };
+
                 set((state) => ({
                     products: updatedProducts,
                     sales: [newSale, ...state.sales],
-                    saleItems: [...newSaleItems, ...state.saleItems],
-                    movements: [...newMovements, ...state.movements],
+                    saleItems: [...(itemsResult.data || []), ...state.saleItems],
+                    movements: [...(movesResult.data || []), ...state.movements],
                     customers: updatedCustomers,
                 }));
             },

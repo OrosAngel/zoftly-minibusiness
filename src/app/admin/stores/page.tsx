@@ -19,6 +19,8 @@ export default function AdminStoresPage() {
     const userRole = useStore((state) => state.userRole);
     const [stores, setStores] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
 
     // Modal state
     const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -221,6 +223,12 @@ export default function AdminStoresPage() {
         );
     }
 
+    const totalPages = Math.ceil(stores.length / itemsPerPage);
+    const paginatedStores = stores.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
     return (
         <div className="flex-1 space-y-6 p-4 sm:p-8 pt-4 sm:pt-6 max-w-6xl mx-auto">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0">
@@ -316,7 +324,7 @@ export default function AdminStoresPage() {
                                     <TableCell colSpan={6} className="text-center py-10 text-slate-500">No hay otras tiendas registradas aún.</TableCell>
                                 </TableRow>
                             ) : (
-                                stores.map((store) => (
+                                paginatedStores.map((store) => (
                                     <TableRow key={store.id}>
                                         <TableCell className="font-mono text-xs text-slate-400 pl-6">
                                             {store.id.substring(0, 8)}...
@@ -372,6 +380,31 @@ export default function AdminStoresPage() {
                             )}
                         </TableBody>
                     </Table>
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between px-4 py-4 border-t border-slate-200 bg-slate-50 rounded-b-xl">
+                            <p className="text-sm text-slate-500">
+                                Página <span className="font-medium text-slate-900">{currentPage}</span> de <span className="font-medium text-slate-900">{totalPages}</span>
+                            </p>
+                            <div className="flex items-center space-x-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                >
+                                    Anterior
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages || totalPages === 0}
+                                >
+                                    Siguiente
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

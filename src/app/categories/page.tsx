@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useStore, Category } from "@/store";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -20,14 +20,29 @@ export default function CategoriesPage() {
     const deleteCategory = useStore((state) => state.deleteCategory);
 
     const [search, setSearch] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState("");
     const [currentCategory, setCurrentCategory] = useState<Category | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const lastActionTime = useRef(0);
+
+    const checkThrottle = () => {
+        const now = Date.now();
+        if (now - lastActionTime.current < 2000) return false;
+        lastActionTime.current = now;
+        return true;
+    };
 
     useEffect(() => {
         setMounted(true);
     }, []);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [search]);
 
     if (!mounted) return <div className="p-8">Cargando categorías...</div>;
 
@@ -35,11 +50,19 @@ export default function CategoriesPage() {
         c.name.toLowerCase().includes(search.toLowerCase())
     );
 
+    const totalPages = Math.ceil(filteredCategories.length / itemsPerPage);
+    const paginatedCategories = filteredCategories.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
     const getProductsCount = (categoryId: string) => {
         return products.filter(p => p.category_id === categoryId).length;
     };
 
     const handleDelete = async (id: string, name: string) => {
+        if (!checkThrottle()) return;
+        if (isProcessing) return;
         if (confirm(`¿Está seguro de eliminar la categoría "${name}"?`)) {
             // Check if category has products
             const hasProducts = products.some(p => p.category_id === id);
@@ -47,21 +70,27 @@ export default function CategoriesPage() {
                 toast.error("No se puede eliminar", { description: "Esta categoría tiene productos asociados." });
                 return;
             }
+            setIsProcessing(true);
             try {
                 await deleteCategory(id);
                 toast.success("Categoría eliminada exitosamente");
             } catch (error) {
                 toast.error("Error al eliminar la categoría");
+            } finally {
+                setIsProcessing(false);
             }
         }
     };
 
     const handleAddCategory = async () => {
+        if (!checkThrottle()) return;
+        if (isProcessing) return;
         if (!newCategoryName.trim()) {
             toast.error("Datos incompletos", { description: "El nombre es obligatorio" });
             return;
         }
 
+        setIsProcessing(true);
         try {
             await addCategory(newCategoryName);
             toast.success("Categoría creada exitosamente");
@@ -69,21 +98,28 @@ export default function CategoriesPage() {
             setNewCategoryName("");
         } catch (error) {
             toast.error("Error al crear categoría");
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     const handleEditCategory = async () => {
+        if (!checkThrottle()) return;
+        if (isProcessing) return;
         if (!currentCategory || !currentCategory.name.trim()) {
             toast.error("Datos incompletos", { description: "El nombre es obligatorio" });
             return;
         }
 
+        setIsProcessing(true);
         try {
             await updateCategory(currentCategory.id, currentCategory.name);
             toast.success("Categoría actualizada exitosamente");
             setIsEditDialogOpen(false);
         } catch (error) {
             toast.error("Error al actualizar categoría");
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -149,7 +185,7 @@ export default function CategoriesPage() {
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredCategories.map((category) => (
+                                paginatedCategories.map((category) => (
                                     <TableRow key={category.id}>
                                         <TableCell className="font-medium">
                                             <div className="flex items-center">
@@ -164,7 +200,7 @@ export default function CategoriesPage() {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end space-x-1">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => openEditDialog(category)}>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => openEditDialog(category)} disabled={isProcessing}>
                                                     <Edit className="h-4 w-4" />
                                                 </Button>
                                                 <Button
@@ -172,6 +208,7 @@ export default function CategoriesPage() {
                                                     size="icon"
                                                     className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
                                                     onClick={() => handleDelete(category.id, category.name)}
+                                                    disabled={isProcessing}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
@@ -183,6 +220,31 @@ export default function CategoriesPage() {
                         </TableBody>
                     </Table>
                 </div>
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-2 py-4 border-t border-slate-200 mt-2 bg-slate-50 rounded-b-md">
+                        <p className="text-sm text-slate-500">
+                            Página <span className="font-medium text-slate-900">{currentPage}</span> de <span className="font-medium text-slate-900">{totalPages}</span>
+                        </p>
+                        <div className="flex items-center space-x-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                Anterior
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages || totalPages === 0}
+                            >
+                                Siguiente
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Modal para Agregar Categoría */}
@@ -207,8 +269,10 @@ export default function CategoriesPage() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleAddCategory} className="bg-slate-900 hover:bg-slate-800">Guardar</Button>
+                        <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isProcessing}>Cancelar</Button>
+                        <Button onClick={handleAddCategory} className="bg-slate-900 hover:bg-slate-800" disabled={isProcessing}>
+                            {isProcessing ? "Guardando..." : "Guardar"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -236,8 +300,10 @@ export default function CategoriesPage() {
                         </div>
                     )}
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleEditCategory} className="bg-blue-600 hover:bg-blue-700">Actualizar</Button>
+                        <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isProcessing}>Cancelar</Button>
+                        <Button onClick={handleEditCategory} className="bg-blue-600 hover:bg-blue-700" disabled={isProcessing}>
+                            {isProcessing ? "Actualizando..." : "Actualizar"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

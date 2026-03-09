@@ -18,10 +18,20 @@ interface TopbarProps {
     onMenuClick?: () => void;
 }
 
+interface Notification {
+    id: string;
+    user_id: string;
+    title: string;
+    message: string;
+    type: 'MESSAGE' | 'ANNOUNCEMENT';
+    is_read: boolean;
+    created_at: string;
+}
+
 export function Topbar({ onMenuClick }: TopbarProps) {
     const clearStore = useStore((state) => state.clearStore);
     const userRole = useStore((state) => state.userRole);
-    const [notifications, setNotifications] = useState<any[]>([]);
+    const [notifications, setNotifications] = useState<Notification[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const router = useRouter();
 
@@ -56,7 +66,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                         'postgres_changes',
                         { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${session.user.id}` },
                         (payload) => {
-                            const newNotif = payload.new;
+                            const newNotif = payload.new as Notification;
                             setNotifications((prev) => [newNotif, ...prev].slice(0, 20));
                             setUnreadCount((prev) => prev + 1);
 

@@ -38,10 +38,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                     .single();
 
                 if (profileError && profileError.code !== 'PGRST116') {
-                    console.error("Error fetching profile (detailed):", JSON.stringify(profileError, null, 2));
-                    console.error("Raw error:", profileError);
+                    console.error("Error fetching profile:", profileError);
                 }
-                console.log("DEBUG: Fetched profile ID:", userId, "Data:", profile);
 
                 // If no profile exists (before SQL script), assume BUSINESS_OWNER
                 const role = profile?.role || 'BUSINESS_OWNER';
