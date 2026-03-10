@@ -83,6 +83,21 @@ export default function POSPage() {
         }).filter(item => item.quantity > 0));
     }, []);
 
+    const setExactQuantity = useCallback((productId: string, qtyStr: string) => {
+        let parsed = parseInt(qtyStr, 10);
+        if (qtyStr === "") parsed = 0;
+        if (isNaN(parsed) || parsed < 0) return;
+
+        setCart(prev => prev.map(item => {
+            if (item.product.id === productId) {
+                let newQ = parsed;
+                if (newQ > item.product.stock) newQ = item.product.stock;
+                return { ...item, quantity: newQ };
+            }
+            return item;
+        }));
+    }, []);
+
     const total = useMemo(
         () => cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0),
         [cart]
@@ -95,7 +110,8 @@ export default function POSPage() {
         if (now - lastActionTime.current < 2000) return; // Bloquear clicks en un margen de 2 segundos
         lastActionTime.current = now;
 
-        if (cart.length === 0 || isProcessing) return;
+        const validCart = cart.filter(item => item.quantity > 0);
+        if (validCart.length === 0 || isProcessing) return;
         if (paymentMethod === "FIADO" && !selectedCustomer) {
             toast.error("Cliente requerido", { description: "Para ventas al fiado, seleccione un cliente." });
             return;
@@ -103,7 +119,7 @@ export default function POSPage() {
 
         setIsProcessing(true);
         try {
-            await processSale(cart, paymentMethod, paymentMethod === "FIADO" ? selectedCustomer : undefined);
+            await processSale(validCart, paymentMethod, paymentMethod === "FIADO" ? selectedCustomer : undefined);
 
             toast.success("Venta Registrada ✅", {
                 description: `Total: S/ ${total.toFixed(2)} pagado en ${paymentMethod}`,
@@ -231,11 +247,19 @@ export default function POSPage() {
                                     <div className="font-medium text-sm leading-tight text-slate-900">{item.product.name}</div>
                                     <div className="text-blue-600 font-semibold text-sm mt-1">S/ {(item.product.price * item.quantity).toFixed(2)}</div>
                                 </div>
-                                <div className="flex items-center space-x-2 bg-white border border-slate-200 rounded-md">
+                                <div className="flex items-center space-x-1 bg-white border border-slate-200 rounded-md">
                                     <Button variant="ghost" size="icon" className="h-8 w-8 rounded-none hover:bg-slate-100 hover:text-red-600" onClick={() => updateQuantity(item.product.id, -1)}>
                                         {item.quantity === 1 ? <Trash2 className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
                                     </Button>
-                                    <span className="w-6 text-center text-sm font-semibold">{item.quantity}</span>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        max={item.product.stock.toString()}
+                                        className="w-12 h-8 text-center text-sm font-semibold p-0 border-none focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        value={item.quantity === 0 ? "" : item.quantity}
+                                        onChange={(e) => setExactQuantity(item.product.id, e.target.value)}
+                                        onBlur={() => setCart(prev => prev.filter(i => i.quantity > 0))}
+                                    />
                                     <Button variant="ghost" size="icon" className="h-8 w-8 rounded-none hover:bg-slate-100" onClick={() => updateQuantity(item.product.id, 1)}>
                                         <Plus className="h-4 w-4" />
                                     </Button>

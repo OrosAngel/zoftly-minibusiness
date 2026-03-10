@@ -1,6 +1,124 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+interface StockUpdateItem {
+    product_name?: string;
+    barcode?: string;
+    action: 'add' | 'remove' | 'set';
+    quantity: number;
+}
+
+/**
+ * POST /api/automation/stock
+ *
+ * Actualiza el stock de uno o varios productos.
+ * 
+ * Headers:
+ *   Authorization: Bearer <api_key>
+ *
+ * Body (un solo producto — retrocompatible):
+ * { "product_name": "Coca-Cola", "action": "add", "quantity": 10 }
+ *
+ * Body (también acepta barcode):
+ * { "barcode": "7750001", "action": "add", "quantity": 10 }
+ *
+ * Body (múltiples productos):
+ * {
+ *   "items": [
+ *     { "product_name": "Coca-Cola", "action": "add", "quantity": 10 },
+ *     { "barcode": "7750002", "action": "set", "quantity": 50 }
+ *   ]
+ * }
+ */
+async function processStockUpdate(
+    storeId: string,
+    item: StockUpdateItem
+): Promise<{ success: boolean; error?: string; result?: Record<string, unknown> }> {
+    const { product_name, barcode, action, quantity } = item;
+
+    if (!action || quantity === undefined) {
+        return { success: false, error: 'Se requiere "action" y "quantity".' };
+    }
+
+    if (!product_name && !barcode) {
+        return { success: false, error: 'Se requiere "product_name" o "barcode".' };
+    }
+
+    const validActions = ['add', 'remove', 'set'];
+    if (!validActions.includes(action)) {
+        return { success: false, error: `Acción inválida "${action}". Debe ser: ${validActions.join(', ')}` };
+    }
+
+    // Find product by barcode or name
+    let query = supabase
+        .from('products')
+        .select('*')
+        .eq('store_id', storeId);
+
+    if (barcode) {
+        query = query.eq('barcode', barcode);
+    } else {
+        query = query.ilike('name', `%${product_name}%`);
+    }
+
+    const { data: products, error: productError } = await query.limit(1);
+
+    if (productError || !products || products.length === 0) {
+        return { success: false, error: `Producto "${product_name || barcode}" no encontrado.` };
+    }
+
+    const product = products[0];
+    const currentStock = product.stock;
+    let newStock = currentStock;
+
+    if (action === 'add') {
+        newStock += quantity;
+    } else if (action === 'remove') {
+        newStock -= quantity;
+    } else if (action === 'set') {
+        newStock = quantity;
+    }
+
+    // Update Product Stock
+    const { error: updateError } = await supabase
+        .from('products')
+        .update({ stock: newStock })
+        .eq('id', product.id);
+
+    if (updateError) {
+        return { success: false, error: `Error al actualizar "${product.name}".` };
+    }
+
+    // Record Movement
+    const movement = {
+        store_id: storeId,
+        product_id: product.id,
+        movement_type: 'AUTOMATIZACION',
+        quantity_changed: newStock - currentStock,
+        previous_stock: currentStock,
+        new_stock: newStock,
+    };
+
+    const { error: moveError } = await supabase
+        .from('inventory_movements')
+        .insert(movement);
+
+    if (moveError) {
+        console.error('Error recording movement:', moveError);
+    }
+
+    return {
+        success: true,
+        result: {
+            id: product.id,
+            name: product.name,
+            barcode: product.barcode,
+            previous_stock: currentStock,
+            new_stock: newStock,
+        },
+    };
+}
+
 export async function POST(req: Request) {
     try {
         const authHeader = req.headers.get('authorization');
@@ -23,82 +141,49 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { product_name, action, quantity } = body;
 
-        if (!product_name || !action || quantity === undefined) {
-            return NextResponse.json({ error: 'Petición inválida. Se requiere product_name, action y quantity' }, { status: 400 });
+        // Support batch mode (items array) or single mode (backward compatible)
+        const items: StockUpdateItem[] = body.items
+            ? body.items
+            : [{ product_name: body.product_name, barcode: body.barcode, action: body.action, quantity: body.quantity }];
+
+        if (items.length === 0) {
+            return NextResponse.json({ error: 'No se proporcionaron productos para actualizar.' }, { status: 400 });
         }
 
-        // Find the product by name in this store (case-insensitive partial match)
-        const { data: products, error: productError } = await supabase
-            .from('products')
-            .select('*')
-            .eq('store_id', store.id)
-            .ilike('name', `%${product_name}%`)
-            .limit(1);
+        // Process all items
+        const results = await Promise.all(
+            items.map(item => processStockUpdate(store.id, item))
+        );
 
-        if (productError || !products || products.length === 0) {
-            return NextResponse.json({ error: `Producto '${product_name}' no encontrado` }, { status: 404 });
-        }
+        const successes = results.filter(r => r.success);
+        const failures = results.filter(r => !r.success);
 
-        const product = products[0];
-
-        const currentStock = product.stock;
-        let newStock = currentStock;
-
-        if (action === 'add') {
-            newStock += quantity;
-        } else if (action === 'remove') {
-            newStock -= quantity;
-        } else if (action === 'set') {
-            newStock = quantity;
-        } else {
-            return NextResponse.json({ error: 'Acción inválida. Debe ser add, remove o set' }, { status: 400 });
-        }
-
-        // Update Product Stock
-        const { error: updateError } = await supabase
-            .from('products')
-            .update({ stock: newStock })
-            .eq('id', product.id);
-
-        if (updateError) {
-            return NextResponse.json({ error: 'Error al actualizar el producto' }, { status: 500 });
-        }
-
-        // Record the Movement using type 'AUTOMATIZACION'
-        const movement = {
-            store_id: store.id,
-            product_id: product.id,
-            movement_type: 'AUTOMATIZACION',
-            quantity_changed: newStock - currentStock,
-            previous_stock: currentStock,
-            new_stock: newStock,
-        };
-
-        const { error: moveError } = await supabase
-            .from('inventory_movements')
-            .insert(movement);
-
-        if (moveError) {
-            console.error('Error recording movement:', moveError);
-            // Non-fatal error, but we log it
-        }
-
-        return NextResponse.json({
-            success: true,
-            message: 'Stock actualizado',
-            product: {
-                id: product.id,
-                name: product.name,
-                barcode: product.barcode,
-                previous_stock: currentStock,
-                new_stock: newStock
+        // If single mode (no items array), return backward-compatible response
+        if (!body.items) {
+            const result = results[0];
+            if (!result.success) {
+                return NextResponse.json({ error: result.error }, { status: 400 });
             }
-        });
+            return NextResponse.json({
+                success: true,
+                message: 'Stock actualizado',
+                product: result.result,
+            });
+        }
 
-    } catch (error: any) {
+        // Batch response
+        return NextResponse.json({
+            success: failures.length === 0,
+            message: `${successes.length} producto(s) actualizado(s)${failures.length > 0 ? `, ${failures.length} error(es)` : ''}`,
+            results: results.map((r, i) => ({
+                item: items[i].product_name || items[i].barcode,
+                ...(r.success ? { success: true, product: r.result } : { success: false, error: r.error }),
+            })),
+        });
+    } catch (error: unknown) {
         console.error('Webhook error:', error);
-        return NextResponse.json({ error: 'Error interno del servidor', details: error.message }, { status: 500 });
+        const message = error instanceof Error ? error.message : 'Error desconocido';
+        return NextResponse.json({ error: 'Error interno del servidor', details: message }, { status: 500 });
     }
 }

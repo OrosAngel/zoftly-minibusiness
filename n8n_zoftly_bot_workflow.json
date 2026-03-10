@@ -1,0 +1,768 @@
+{
+    "nodes": [
+        {
+            "id": "9cc26a42-eb43-40c4-b507-cbaf187a5e15",
+            "name": "Get New Message",
+            "type": "n8n-nodes-base.telegramTrigger",
+            "position": [
+                1120,
+                500
+            ],
+            "webhookId": "464f0a75-56d1-402f-8b12-b358452e9736",
+            "parameters": {
+                "updates": [
+                    "message"
+                ],
+                "additionalFields": {}
+            },
+            "credentials": {
+                "telegramApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "Zoftly Telegram Bot"
+                }
+            },
+            "typeVersion": 1.1
+        },
+        {
+            "id": "a4916f54-ae6b-495d-979b-92dca965e3bb",
+            "name": "Find User",
+            "type": "n8n-nodes-base.supabase",
+            "position": [
+                1360,
+                500
+            ],
+            "parameters": {
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "telegram_id",
+                            "keyValue": "={{ $json.message.chat.id }}",
+                            "condition": "eq"
+                        }
+                    ]
+                },
+                "tableId": "telegram_links",
+                "operation": "getAll"
+            },
+            "credentials": {
+                "supabaseApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "Zoftly Supabase"
+                }
+            },
+            "typeVersion": 1,
+            "alwaysOutputData": true
+        },
+        {
+            "id": "0673be1f-3cae-42a0-9c62-1ed570859043",
+            "name": "If User exists",
+            "type": "n8n-nodes-base.if",
+            "position": [
+                1560,
+                500
+            ],
+            "parameters": {
+                "options": {},
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": true,
+                        "typeValidation": "strict"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "id": "b6e69a1f-eb42-4ef6-b80c-3167f1b8c830",
+                            "operator": {
+                                "type": "string",
+                                "operation": "exists",
+                                "singleValue": true
+                            },
+                            "leftValue": "={{ $json.id }}",
+                            "rightValue": ""
+                        }
+                    ]
+                }
+            },
+            "typeVersion": 2.1
+        },
+        {
+            "id": "ba5c7385-8c80-43c8-9de2-430175bda70b",
+            "name": "OPENAI - Send message",
+            "type": "n8n-nodes-base.httpRequest",
+            "position": [
+                1780,
+                500
+            ],
+            "parameters": {
+                "url": "=https://api.openai.com/v1/threads/{{ $('Find User').item.json.openai_thread_id }}/messages",
+                "method": "POST",
+                "options": {},
+                "sendBody": true,
+                "sendHeaders": true,
+                "authentication": "predefinedCredentialType",
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "role",
+                            "value": "user"
+                        },
+                        {
+                            "name": "content",
+                            "value": "={{ $('Get New Message').item.json.message.text }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "OpenAI-Beta",
+                            "value": "assistants=v2"
+                        }
+                    ]
+                },
+                "nodeCredentialType": "openAiApi"
+            },
+            "credentials": {
+                "openAiApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "OpenAI Zoftly"
+                }
+            },
+            "typeVersion": 4.2
+        },
+        {
+            "id": "024832bc-3d42-4879-a57f-b23e962b4c69",
+            "name": "OPENAI - Run assistant",
+            "type": "n8n-nodes-base.httpRequest",
+            "position": [
+                1980,
+                500
+            ],
+            "parameters": {
+                "url": "=https://api.openai.com/v1/threads/{{ $('Find User').item.json.openai_thread_id }}/runs",
+                "method": "POST",
+                "options": {},
+                "sendBody": true,
+                "sendHeaders": true,
+                "authentication": "predefinedCredentialType",
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "assistant_id",
+                            "value": "PONER_TU_ASSISTANT_ID_AQUI"
+                        },
+                        {
+                            "name": "stream",
+                            "value": "={{true}}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "OpenAI-Beta",
+                            "value": "assistants=v2"
+                        }
+                    ]
+                },
+                "nodeCredentialType": "openAiApi"
+            },
+            "credentials": {
+                "openAiApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "OpenAI Zoftly"
+                }
+            },
+            "typeVersion": 4.2
+        },
+        {
+            "id": "bc191e2b-15f4-45b7-af2e-19ed1639b7f5",
+            "name": "OPENAI - Get messages",
+            "type": "n8n-nodes-base.httpRequest",
+            "position": [
+                2180,
+                500
+            ],
+            "parameters": {
+                "url": "=https://api.openai.com/v1/threads/{{ $('Find User').item.json.openai_thread_id }}/messages",
+                "options": {},
+                "sendHeaders": true,
+                "authentication": "predefinedCredentialType",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "OpenAI-Beta",
+                            "value": "assistants=v2"
+                        }
+                    ]
+                },
+                "nodeCredentialType": "openAiApi"
+            },
+            "credentials": {
+                "openAiApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "OpenAI Zoftly"
+                }
+            },
+            "typeVersion": 4.2
+        },
+        {
+            "id": "aabb0001-parse-action-code-node",
+            "name": "Parse Action",
+            "type": "n8n-nodes-base.code",
+            "position": [
+                2380,
+                500
+            ],
+            "parameters": {
+                "jsCode": "// Obtener respuesta del asistente OpenAI\nconst messages = $('OPENAI - Get messages').item.json;\nconst responseText = messages.data[0].content[0].text.value;\nconst apiKey = $('Find User').item.json.api_key;\n\n// Detectar si hay una acción de Zoftly en la respuesta\nconst actionMatch = responseText.match(/\\[ZOFTLY_ACTION\\]([\\s\\S]*?)\\[\\/ZOFTLY_ACTION\\]/);\n\nif (actionMatch) {\n  try {\n    const action = JSON.parse(actionMatch[1].trim());\n    const cleanMessage = responseText.replace(/\\[ZOFTLY_ACTION\\][\\s\\S]*?\\[\\/ZOFTLY_ACTION\\]/, '').trim();\n    \n    // Determinar URL y método según la acción\n    // IMPORTANTE: Cambiar esta URL por la URL de tu app Zoftly desplegada\n    const BASE_URL = 'https://TU-ZOFTLY-URL.com';\n    let apiUrl = '';\n    let method = 'POST';\n    let body = {};\n    \n    if (action.action === 'sell') {\n      apiUrl = BASE_URL + '/api/automation/sell';\n      body = {\n        items: action.items,\n        payment_method: action.payment_method || 'EFECTIVO',\n        customer_id: action.customer_id || null\n      };\n    } else if (action.action === 'stock') {\n      apiUrl = BASE_URL + '/api/automation/stock';\n      body = {\n        product_name: action.product_name,\n        barcode: action.barcode,\n        action: action.action_type,\n        quantity: action.quantity\n      };\n    } else if (action.action === 'products') {\n      apiUrl = BASE_URL + '/api/automation/products' + (action.search ? '?search=' + encodeURIComponent(action.search) : '');\n      method = 'GET';\n    }\n    \n    return [{\n      json: {\n        hasAction: true,\n        apiUrl,\n        method,\n        body: JSON.stringify(body),\n        apiKey,\n        cleanMessage,\n        actionType: action.action\n      }\n    }];\n  } catch (e) {\n    return [{ json: { hasAction: false, message: responseText } }];\n  }\n} else {\n  return [{ json: { hasAction: false, message: responseText } }];\n}\n"
+            },
+            "typeVersion": 2
+        },
+        {
+            "id": "aabb0002-if-has-action",
+            "name": "If Has Action",
+            "type": "n8n-nodes-base.if",
+            "position": [
+                2580,
+                500
+            ],
+            "parameters": {
+                "options": {},
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": true,
+                        "typeValidation": "strict"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "id": "action-check-1",
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true",
+                                "singleValue": true
+                            },
+                            "leftValue": "={{ $json.hasAction }}",
+                            "rightValue": ""
+                        }
+                    ]
+                }
+            },
+            "typeVersion": 2.1
+        },
+        {
+            "id": "aabb0003-call-zoftly-api",
+            "name": "Call Zoftly API",
+            "type": "n8n-nodes-base.httpRequest",
+            "position": [
+                2780,
+                400
+            ],
+            "parameters": {
+                "url": "={{ $json.apiUrl }}",
+                "method": "={{ $json.method }}",
+                "options": {},
+                "sendBody": true,
+                "sendHeaders": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "=",
+                            "value": "="
+                        }
+                    ]
+                },
+                "specifyBody": "json",
+                "jsonBody": "={{ $json.body }}",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "=Bearer {{ $json.apiKey }}"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                }
+            },
+            "continueOnFail": true,
+            "typeVersion": 4.2
+        },
+        {
+            "id": "aabb0004-format-result",
+            "name": "Format Result",
+            "type": "n8n-nodes-base.code",
+            "position": [
+                2980,
+                400
+            ],
+            "parameters": {
+                "jsCode": "const apiResponse = $input.item.json;\nconst cleanMessage = $('Parse Action').item.json.cleanMessage;\nconst actionType = $('Parse Action').item.json.actionType;\n\nlet resultText = '';\n\nif (apiResponse.success) {\n  if (actionType === 'sell' && apiResponse.sale) {\n    resultText = '✅ Venta registrada:\\n';\n    for (const item of apiResponse.sale.items) {\n      resultText += `• ${item.quantity}x ${item.product_name} — S/ ${item.subtotal.toFixed(2)}\\n`;\n    }\n    resultText += `─────────────\\nTotal: S/ ${apiResponse.sale.total_amount.toFixed(2)} (${apiResponse.sale.payment_method})`;\n  } else if (actionType === 'stock' && apiResponse.product) {\n    const p = apiResponse.product;\n    resultText = `✅ Stock actualizado:\\n${p.name}: ${p.previous_stock} → ${p.new_stock} unidades`;\n  } else if (actionType === 'products' && apiResponse.products) {\n    resultText = `📦 Productos encontrados (${apiResponse.count}):\\n`;\n    for (const p of apiResponse.products.slice(0, 10)) {\n      const warn = p.low_stock ? ' ⚠️' : '';\n      resultText += `• ${p.name} — S/ ${p.price.toFixed(2)} — Stock: ${p.stock}${warn}\\n`;\n    }\n  } else {\n    resultText = '✅ ' + (apiResponse.message || 'Operación completada');\n  }\n} else {\n  resultText = '❌ ' + (apiResponse.error || 'Error al procesar la operación');\n}\n\n// Combinar mensaje del asistente con resultado\nlet finalMessage = '';\nif (cleanMessage) {\n  finalMessage = cleanMessage + '\\n\\n' + resultText;\n} else {\n  finalMessage = resultText;\n}\n\nreturn [{ json: { text: finalMessage } }];\n"
+            },
+            "typeVersion": 2
+        },
+        {
+            "id": "aabb0005-send-action-result",
+            "name": "Send Action Result",
+            "type": "n8n-nodes-base.telegram",
+            "position": [
+                3180,
+                400
+            ],
+            "parameters": {
+                "text": "={{ $json.text }}",
+                "chatId": "={{ $('Get New Message').item.json.message.chat.id }}",
+                "additionalFields": {
+                    "appendAttribution": false
+                }
+            },
+            "credentials": {
+                "telegramApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "Zoftly Telegram Bot"
+                }
+            },
+            "typeVersion": 1.2
+        },
+        {
+            "id": "c22e05e5-f0a7-4a09-a864-acfc58469b30",
+            "name": "Send Message to User",
+            "type": "n8n-nodes-base.telegram",
+            "position": [
+                2780,
+                620
+            ],
+            "parameters": {
+                "text": "={{ $('Parse Action').item.json.message }}",
+                "chatId": "={{ $('Get New Message').item.json.message.chat.id }}",
+                "additionalFields": {
+                    "appendAttribution": false
+                }
+            },
+            "credentials": {
+                "telegramApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "Zoftly Telegram Bot"
+                }
+            },
+            "typeVersion": 1.2
+        },
+        {
+            "id": "aabb0010-validate-api-key",
+            "name": "Validate API Key",
+            "type": "n8n-nodes-base.httpRequest",
+            "position": [
+                1780,
+                760
+            ],
+            "continueOnFail": true,
+            "parameters": {
+                "url": "https://TU-ZOFTLY-URL.com/api/automation/link",
+                "method": "POST",
+                "options": {},
+                "sendBody": true,
+                "sendHeaders": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "telegram_id",
+                            "value": "={{ $('Get New Message').item.json.message.chat.id }}"
+                        },
+                        {
+                            "name": "api_key",
+                            "value": "={{ $('Get New Message').item.json.message.text }}"
+                        }
+                    ]
+                },
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                }
+            },
+            "typeVersion": 4.2
+        },
+        {
+            "id": "aabb0011-if-link-valid",
+            "name": "If Link Valid",
+            "type": "n8n-nodes-base.if",
+            "position": [
+                1980,
+                760
+            ],
+            "parameters": {
+                "options": {},
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": true,
+                        "typeValidation": "strict"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "id": "link-valid-check",
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true",
+                                "singleValue": true
+                            },
+                            "leftValue": "={{ $json.success }}",
+                            "rightValue": ""
+                        }
+                    ]
+                }
+            },
+            "typeVersion": 2.1
+        },
+        {
+            "id": "098b6fcf-7cb6-4730-8892-949fedc946b3",
+            "name": "OPENAI - Create thread",
+            "type": "n8n-nodes-base.httpRequest",
+            "position": [
+                2180,
+                700
+            ],
+            "parameters": {
+                "url": "https://api.openai.com/v1/threads",
+                "method": "POST",
+                "options": {},
+                "sendHeaders": true,
+                "authentication": "predefinedCredentialType",
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "OpenAI-Beta",
+                            "value": "assistants=v2"
+                        }
+                    ]
+                },
+                "nodeCredentialType": "openAiApi"
+            },
+            "credentials": {
+                "openAiApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "OpenAI Zoftly"
+                }
+            },
+            "typeVersion": 4.2
+        },
+        {
+            "id": "aabb0012-update-user-thread",
+            "name": "Update User Thread",
+            "type": "n8n-nodes-base.supabase",
+            "position": [
+                2380,
+                700
+            ],
+            "parameters": {
+                "tableId": "telegram_links",
+                "operation": "update",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "telegram_id",
+                            "keyValue": "={{ $('Get New Message').item.json.message.chat.id }}",
+                            "condition": "eq"
+                        }
+                    ]
+                },
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "openai_thread_id",
+                            "fieldValue": "={{ $('OPENAI - Create thread').item.json.id }}"
+                        }
+                    ]
+                }
+            },
+            "credentials": {
+                "supabaseApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "Zoftly Supabase"
+                }
+            },
+            "typeVersion": 1
+        },
+        {
+            "id": "aabb0013-send-welcome",
+            "name": "Send Welcome",
+            "type": "n8n-nodes-base.telegram",
+            "position": [
+                2580,
+                700
+            ],
+            "parameters": {
+                "text": "=✅ ¡Conectado exitosamente a \"{{ $('Validate API Key').item.json.store.name }}\"!\n\n🤖 Soy tu asistente de Zoftly. Puedo ayudarte a:\n• 🛒 Registrar ventas\n• 📦 Actualizar tu stock\n• 🔍 Consultar tus productos\n\nEscríbeme lo que necesites. Por ejemplo:\n\"Vendí 2 Coca-Cola por Yape\"\n\"Llegaron 30 panes\"\n\"¿Cuántas gaseosas me quedan?\"",
+                "chatId": "={{ $('Get New Message').item.json.message.chat.id }}",
+                "additionalFields": {
+                    "appendAttribution": false
+                }
+            },
+            "credentials": {
+                "telegramApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "Zoftly Telegram Bot"
+                }
+            },
+            "typeVersion": 1.2
+        },
+        {
+            "id": "aabb0014-ask-for-api-key",
+            "name": "Ask for API Key",
+            "type": "n8n-nodes-base.telegram",
+            "position": [
+                2180,
+                900
+            ],
+            "parameters": {
+                "text": "👋 ¡Hola! Soy el asistente de Zoftly.\n\nPara conectar tu tienda, necesito tu API Key.\n\n📋 La encuentras en:\nZoftly → Ajustes → API Key → Copiar\n\nEnvíame tu API Key para comenzar.",
+                "chatId": "={{ $('Get New Message').item.json.message.chat.id }}",
+                "additionalFields": {
+                    "appendAttribution": false
+                }
+            },
+            "credentials": {
+                "telegramApi": {
+                    "id": "CONFIGURE_TU_CREDENTIAL",
+                    "name": "Zoftly Telegram Bot"
+                }
+            },
+            "typeVersion": 1.2
+        },
+        {
+            "id": "aabb1001-sticky-setup",
+            "name": "Instrucciones de Setup",
+            "type": "n8n-nodes-base.stickyNote",
+            "position": [
+                200,
+                120
+            ],
+            "parameters": {
+                "color": 7,
+                "width": 380,
+                "height": 520,
+                "content": "### 🚀 Setup — Zoftly Telegram Bot\n\n1. **Crear Bot de Telegram** con [@BotFather](https://t.me/botfather)\n\n2. **Configurar credentials en n8n:**\n   - Telegram: usar el token del bot\n   - Supabase: URL y Key de tu proyecto\n   - OpenAI: tu API Key\n\n3. **Ejecutar SQL en Supabase:**\n   - `supabase_migration_telegram_links.sql`\n   - `supabase_migration_add_thread_id.sql`\n\n4. **Crear Assistant en OpenAI:**\n   - Ir a platform.openai.com/assistants\n   - Crear uno con las instrucciones del sticky note amarillo\n   - Copiar el `assistant_id` al nodo \"Run assistant\"\n\n5. **Cambiar URLs:**\n   - En \"Validate API Key\": poner tu URL de Zoftly\n   - En \"Parse Action\" (código): cambiar `TU-ZOFTLY-URL.com`\n\n6. **Activar el workflow** ✅"
+            },
+            "typeVersion": 1
+        },
+        {
+            "id": "aabb1002-sticky-assistant",
+            "name": "Instrucciones del Assistant",
+            "type": "n8n-nodes-base.stickyNote",
+            "position": [
+                200,
+                680
+            ],
+            "parameters": {
+                "color": 4,
+                "width": 380,
+                "height": 600,
+                "content": "### 🤖 Instrucciones para el OpenAI Assistant\n\nCopiar esto en las instrucciones del assistant:\n\n```\nEres el asistente de Zoftly, un sistema de gestión para negocios. Ayudas al dueño a gestionar su tienda desde Telegram.\n\nCuando el usuario quiera VENDER productos, incluye en tu respuesta:\n[ZOFTLY_ACTION]{\"action\":\"sell\",\"items\":[{\"product_name\":\"NOMBRE\",\"quantity\":N}],\"payment_method\":\"EFECTIVO\"}[/ZOFTLY_ACTION]\n\nMétodos de pago válidos: EFECTIVO, TRANSFERENCIA, TARJETA, FIADO, YAPE_PLIN\n\nCuando quiera ACTUALIZAR STOCK, incluye:\n[ZOFTLY_ACTION]{\"action\":\"stock\",\"product_name\":\"NOMBRE\",\"action_type\":\"add\",\"quantity\":N}[/ZOFTLY_ACTION]\n\naction_type puede ser: add, remove, set\n\nCuando quiera CONSULTAR PRODUCTOS, incluye:\n[ZOFTLY_ACTION]{\"action\":\"products\",\"search\":\"TERMINO\"}[/ZOFTLY_ACTION]\n\nIMPORTANTE:\n- Siempre acompaña el bloque de acción con un mensaje amigable\n- Si no entiendes qué producto quiere, pregunta\n- Si no especifica método de pago, usa EFECTIVO\n- Responde siempre en español\n```"
+            },
+            "typeVersion": 1
+        },
+        {
+            "id": "aabb1003-sticky-flow",
+            "name": "Flujo del Bot",
+            "type": "n8n-nodes-base.stickyNote",
+            "position": [
+                620,
+                120
+            ],
+            "parameters": {
+                "color": 3,
+                "width": 380,
+                "height": 280,
+                "content": "### 📊 Flujo del Bot\n\n**Usuario nuevo:**\n1. Escribe al bot → le pide API Key\n2. Envía su API Key → se valida con Zoftly\n3. Si válida → se vincula + crea thread + bienvenida\n4. Si inválida → le pide que intente de nuevo\n\n**Usuario existente:**\n1. Escribe al bot → va por OpenAI\n2. OpenAI interpreta la intención\n3. Si detecta venta/stock → se ejecuta en Zoftly\n4. Si es conversación normal → responde directamente"
+            },
+            "typeVersion": 1
+        }
+    ],
+    "connections": {
+        "Get New Message": {
+            "main": [
+                [
+                    {
+                        "node": "Find User",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find User": {
+            "main": [
+                [
+                    {
+                        "node": "If User exists",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If User exists": {
+            "main": [
+                [
+                    {
+                        "node": "OPENAI - Send message",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Validate API Key",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OPENAI - Send message": {
+            "main": [
+                [
+                    {
+                        "node": "OPENAI - Run assistant",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OPENAI - Run assistant": {
+            "main": [
+                [
+                    {
+                        "node": "OPENAI - Get messages",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OPENAI - Get messages": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Action",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Action": {
+            "main": [
+                [
+                    {
+                        "node": "If Has Action",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If Has Action": {
+            "main": [
+                [
+                    {
+                        "node": "Call Zoftly API",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Send Message to User",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Call Zoftly API": {
+            "main": [
+                [
+                    {
+                        "node": "Format Result",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Result": {
+            "main": [
+                [
+                    {
+                        "node": "Send Action Result",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validate API Key": {
+            "main": [
+                [
+                    {
+                        "node": "If Link Valid",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If Link Valid": {
+            "main": [
+                [
+                    {
+                        "node": "OPENAI - Create thread",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Ask for API Key",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OPENAI - Create thread": {
+            "main": [
+                [
+                    {
+                        "node": "Update User Thread",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update User Thread": {
+            "main": [
+                [
+                    {
+                        "node": "Send Welcome",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {}
+}
