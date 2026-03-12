@@ -51,29 +51,37 @@ export function Sidebar() {
   const navigation = userRole === 'ADMIN' ? adminNavigation : businessNavigation;
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const fetchUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const user = session.user;
         if (user.email) setUserEmail(user.email);
 
         const fullName = user.user_metadata?.full_name || "";
-        const firstNameStr = user.user_metadata?.first_name || "";
-        const lastNameStr = user.user_metadata?.last_name || "";
+        const firstName = user.user_metadata?.first_name || "";
+        const lastName = user.user_metadata?.last_name || "";
 
-        if (fullName) {
+        if (firstName || lastName) {
+          setUserName(`${firstName} ${lastName}`.trim());
+        } else if (fullName) {
           setUserName(fullName);
-        } else {
-          const firstName = firstNameStr.split(" ")[0];
-          const lastName = lastNameStr.split(" ")[0];
-
-          if (firstName && lastName) {
-            setUserName(`${firstName} ${lastName}`);
-          } else if (firstName) {
-            setUserName(firstName);
-          }
         }
       }
-    });
+    };
+
+    // Inicializar estado
+    fetchUser();
+
+    // Escuchar cambios de perfil (para cuando editan en Settings p.ej)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === "USER_UPDATED" || event === "SIGNED_IN") {
+          fetchUser();
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
   return (
@@ -111,9 +119,14 @@ export function Sidebar() {
       </div>
       <div className="border-t border-slate-800 p-4">
         <div className="flex items-center text-left">
-          <div className="ml-3 truncate max-w-[200px]">
-            <p className="text-sm font-medium text-white truncate" title={userName || (userRole === 'ADMIN' ? 'Zoftlytech Admin' : currentStore?.name) || "Cargando..."}>
-              {userName || (userRole === 'ADMIN' ? 'Zoftlytech Admin' : currentStore?.name) || "Cargando..."}
+          <div className="w-full truncate">
+            {currentStore?.name && userRole !== 'ADMIN' && (
+              <p className="text-sm font-bold text-blue-400 truncate mb-0.5" title={currentStore.name}>
+                {currentStore.name}
+              </p>
+            )}
+            <p className="text-sm font-medium text-white truncate" title={userName || (userRole === 'ADMIN' ? 'Zoftlytech Admin' : "Cargando...")}>
+              {userName || (userRole === 'ADMIN' ? 'Zoftlytech Admin' : "Cargando...")}
             </p>
             <p className="text-xs font-medium text-slate-400 truncate" title={userEmail}>
               {userEmail || "Cargando..."}

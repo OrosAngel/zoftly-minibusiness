@@ -83,6 +83,7 @@ export function ThermalTicket({
       <div className="text-center mt-8 text-xs">
         <p className="uppercase font-bold mb-1">¡Gracias por su compra!</p>
         <p>Vuelva pronto</p>
+        <p className="mt-4 text-[10px] text-gray-500">© 2026 ZoftlyTech</p>
       </div>
     </div>
   );

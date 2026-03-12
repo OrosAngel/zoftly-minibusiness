@@ -5,94 +5,72 @@ import { useStore } from "@/store";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Key, Eye, EyeOff, Copy, Webhook, ShoppingCart, Package, Search, Link2, ChevronDown, ChevronUp } from "lucide-react";
+import { Key, Eye, EyeOff, Copy, Webhook } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 
-interface EndpointDocProps {
-    method: "GET" | "POST";
-    path: string;
-    description: string;
-    curlExample: string;
-    bodyExample?: string;
-    icon: React.ReactNode;
-    color: string;
-}
-
-function EndpointDoc({ method, path, description, curlExample, bodyExample, icon, color }: EndpointDocProps) {
-    const [expanded, setExpanded] = useState(false);
-
-    const handleCopyExample = () => {
-        navigator.clipboard.writeText(curlExample);
-        toast.success("Ejemplo copiado al portapapeles");
-    };
-
-    return (
-        <div className="border border-slate-200 rounded-lg overflow-hidden">
-            <button
-                onClick={() => setExpanded(!expanded)}
-                className="w-full flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors text-left"
-            >
-                <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${color}`}>
-                        {icon}
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${method === "GET"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-blue-100 text-blue-700"
-                                }`}>
-                                {method}
-                            </span>
-                            <code className="text-sm font-mono text-slate-700">{path}</code>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-1">{description}</p>
-                    </div>
-                </div>
-                {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
-            </button>
-
-            {expanded && (
-                <div className="border-t border-slate-100 p-4 bg-slate-50/50 space-y-3">
-                    {bodyExample && (
-                        <div>
-                            <p className="text-xs font-semibold text-slate-600 mb-1">Body (JSON):</p>
-                            <pre className="text-xs bg-slate-900 text-green-400 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">
-                                {bodyExample}
-                            </pre>
-                        </div>
-                    )}
-                    <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <p className="text-xs font-semibold text-slate-600">Ejemplo cURL:</p>
-                            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={handleCopyExample}>
-                                <Copy className="h-3 w-3 mr-1" /> Copiar
-                            </Button>
-                        </div>
-                        <pre className="text-xs bg-slate-900 text-sky-300 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">
-                            {curlExample}
-                        </pre>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
+// EndpointDoc Component removed
 
 export default function SettingsPage() {
     const [mounted, setMounted] = useState(false);
     const store = useStore((state) => state.currentStore);
+    const setCurrentStore = useStore((state) => state.setCurrentStore);
+    
     const [showKey, setShowKey] = useState(false);
+    
+    const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
+    const [storeName, setStoreName] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         setMounted(true);
-    }, []);
+        if (store?.name) {
+            setStoreName(store.name);
+        }
+        
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user?.user_metadata) {
+                setFirstName(user.user_metadata.first_name || "");
+                setLastName(user.user_metadata.last_name || "");
+            }
+        });
+    }, [store]);
 
     if (!mounted) return <div className="p-8">Cargando ajustes...</div>;
 
     const handleCopy = (text: string, type: string) => {
         navigator.clipboard.writeText(text);
         toast.success(`${type} copiado al portapapeles`);
+    };
+
+    const handleSaveProfile = async () => {
+        setIsSaving(true);
+        try {
+            // Update Auth User Metadata
+            const { error: userError } = await supabase.auth.updateUser({
+                data: { first_name: firstName, last_name: lastName }
+            });
+            if (userError) throw userError;
+
+            // Update Store Name in DB
+            if (storeName !== store.name) {
+                const { error: storeError } = await supabase
+                    .from('stores')
+                    .update({ name: storeName })
+                    .eq('id', store.id);
+                if (storeError) throw storeError;
+                
+                // Update Zustand Store
+                setCurrentStore({ ...store, name: storeName });
+            }
+
+            toast.success("Perfil actualizado correctamente");
+        } catch (error: any) {
+            toast.error("Error al guardar", { description: error.message });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const apiKeyPlaceholder = store.api_key || "TU_API_KEY";
@@ -150,98 +128,55 @@ export default function SettingsPage() {
                     </CardContent>
                 </Card>
 
-                {/* API Documentation Card */}
+                {/* Profile Edit Card */}
                 <Card className="border-slate-200 shadow-sm">
-                    <CardHeader className="pb-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50/50 to-purple-50/50">
+                    <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50">
                         <CardTitle className="flex items-center text-slate-800 text-lg">
-                            <Package className="mr-2 h-5 w-5 text-indigo-600" />
-                            Referencia de la API
+                            <span className="mr-2 text-xl">👤</span>
+                            Perfil de Usuario y Tienda
                         </CardTitle>
                         <CardDescription className="text-slate-600">
-                            Estos son los endpoints disponibles para tu automatización. Todos requieren tu API Key en el header
-                            <code className="mx-1 px-1.5 py-0.5 bg-slate-100 rounded text-xs font-mono">Authorization: Bearer TU_API_KEY</code>
+                            Actualiza tus datos personales y el nombre de tu negocio.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-3 pt-6">
-
-                        <EndpointDoc
-                            method="POST"
-                            path="/api/automation/sell"
-                            description="Registra una venta. Descuenta stock automáticamente."
-                            icon={<ShoppingCart className="h-4 w-4 text-white" />}
-                            color="bg-blue-500"
-                            bodyExample={`{
-  "items": [
-    { "product_name": "Coca-Cola", "quantity": 2 },
-    { "barcode": "7750001", "quantity": 1 }
-  ],
-  "payment_method": "EFECTIVO"
-}`}
-                            curlExample={`curl -X POST ${baseUrl}/api/automation/sell \\
-  -H "Authorization: Bearer ${apiKeyPlaceholder}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "items": [{"product_name": "Coca-Cola", "quantity": 2}],
-    "payment_method": "EFECTIVO"
-  }'`}
-                        />
-
-                        <EndpointDoc
-                            method="GET"
-                            path="/api/automation/products"
-                            description="Consulta tu catálogo de productos y stock disponible."
-                            icon={<Search className="h-4 w-4 text-white" />}
-                            color="bg-emerald-500"
-                            curlExample={`curl "${baseUrl}/api/automation/products?search=coca&in_stock=true" \\
-  -H "Authorization: Bearer ${apiKeyPlaceholder}"`}
-                        />
-
-                        <EndpointDoc
-                            method="POST"
-                            path="/api/automation/stock"
-                            description="Actualiza el stock de uno o varios productos."
-                            icon={<Package className="h-4 w-4 text-white" />}
-                            color="bg-amber-500"
-                            bodyExample={`{
-  "product_name": "Coca-Cola",
-  "action": "add",
-  "quantity": 50
-}`}
-                            curlExample={`curl -X POST ${baseUrl}/api/automation/stock \\
-  -H "Authorization: Bearer ${apiKeyPlaceholder}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"product_name": "Coca-Cola", "action": "add", "quantity": 50}'`}
-                        />
-
-                        <EndpointDoc
-                            method="POST"
-                            path="/api/automation/link"
-                            description="Vincula un chat de Telegram con tu tienda (para bot compartido)."
-                            icon={<Link2 className="h-4 w-4 text-white" />}
-                            color="bg-purple-500"
-                            bodyExample={`{
-  "telegram_id": "123456789",
-  "api_key": "${apiKeyPlaceholder}"
-}`}
-                            curlExample={`curl -X POST ${baseUrl}/api/automation/link \\
-  -H "Content-Type: application/json" \\
-  -d '{"telegram_id": "123456789", "api_key": "${apiKeyPlaceholder}"}'`}
-                        />
-
-                        <div className="mt-4 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-                            <p className="text-sm font-semibold text-indigo-800 mb-2">💡 Métodos de pago válidos:</p>
-                            <div className="flex flex-wrap gap-2">
-                                {["EFECTIVO", "TRANSFERENCIA", "TARJETA", "FIADO", "YAPE_PLIN"].map(method => (
-                                    <code key={method} className="text-xs bg-white px-2 py-1 rounded border border-indigo-200 text-indigo-700 font-mono">
-                                        {method}
-                                    </code>
-                                ))}
+                    <CardContent className="space-y-4 pt-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-700">Nombre</label>
+                                <Input
+                                    placeholder="Tu nombre"
+                                    value={firstName}
+                                    onChange={(e) => setFirstName(e.target.value)}
+                                />
                             </div>
-                            <p className="text-xs text-indigo-600 mt-2">
-                                Para ventas al FIADO, incluye el campo <code className="bg-white px-1 rounded">&quot;customer_id&quot;</code> con el UUID del cliente.
-                            </p>
+                            <div className="space-y-2">
+                                <label className="text-sm font-semibold text-slate-700">Apellido</label>
+                                <Input
+                                    placeholder="Tu apellido"
+                                    value={lastName}
+                                    onChange={(e) => setLastName(e.target.value)}
+                                />
+                            </div>
                         </div>
 
+                        <div className="space-y-2 pt-2">
+                            <label className="text-sm font-semibold text-slate-700">Nombre del Negocio</label>
+                            <Input
+                                placeholder="Ej. Bodega Don Lucho"
+                                value={storeName}
+                                onChange={(e) => setStoreName(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="pt-4 flex justify-end">
+                            <Button 
+                                onClick={handleSaveProfile} 
+                                disabled={isSaving || !firstName || !storeName}
+                                className="bg-blue-600 hover:bg-blue-700"
+                            >
+                                {isSaving ? "Guardando..." : "Guardar Cambios"}
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
