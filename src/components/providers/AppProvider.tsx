@@ -131,9 +131,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     return (
-        <div className="flex h-screen overflow-hidden bg-slate-50">
+        <div className="flex h-screen overflow-hidden bg-slate-50 print:bg-white print:h-auto print:overflow-visible">
             {/* Desktop Sidebar */}
-            <div className="hidden lg:flex lg:flex-shrink-0">
+            <div className="hidden lg:flex lg:flex-shrink-0 print:hidden">
                 <Sidebar />
             </div>
 
@@ -145,9 +145,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 </SheetContent>
             </Sheet>
 
-            <div className="flex w-0 flex-1 flex-col overflow-hidden">
-                <Topbar onMenuClick={() => setIsMobileMenuOpen(true)} />
-                <main className="relative flex-1 overflow-y-auto focus:outline-none">
+            <div className="flex w-0 flex-1 flex-col overflow-hidden print:overflow-visible">
+                <div className="print:hidden">
+                    <Topbar onMenuClick={() => setIsMobileMenuOpen(true)} />
+                </div>
+                <main className="relative flex-1 overflow-y-auto focus:outline-none print:overflow-visible">
                     {children}
                 </main>
             </div>

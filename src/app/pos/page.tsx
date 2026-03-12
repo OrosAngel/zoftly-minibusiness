@@ -5,10 +5,13 @@ import { useStore, Product, PaymentMethod } from "@/store";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Landmark, UserPlus, Package, Loader2 } from "lucide-react";
+import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Landmark, UserPlus, Package, Loader2, Printer, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { ThermalTicket } from "@/components/pos/ThermalTicket";
 import { toast } from "sonner";
 import { useHydration } from "@/hooks/use-hydration";
+import { supabase } from "@/lib/supabase";
 
 interface CartItem {
     product: Product;
@@ -21,6 +24,7 @@ export default function POSPage() {
     const categories = useStore((state) => state.categories);
     const customers = useStore((state) => state.customers);
     const processSale = useStore((state) => state.processSale);
+    const currentStore = useStore((state) => state.currentStore);
 
     const [search, setSearch] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
@@ -30,7 +34,26 @@ export default function POSPage() {
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("EFECTIVO");
     const [selectedCustomer, setSelectedCustomer] = useState<string>("");
     const [isProcessing, setIsProcessing] = useState(false);
+    const [cashierName, setCashierName] = useState("Cajero Local");
     const lastActionTime = useRef(0);
+
+    const [successDialog, setSuccessDialog] = useState<{
+        open: boolean;
+        total: number;
+        paymentMethod: string;
+        customerName?: string;
+        items: CartItem[];
+    }>({ open: false, total: 0, paymentMethod: "EFECTIVO", items: [] });
+
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user?.user_metadata?.first_name) {
+                setCashierName(user.user_metadata.first_name);
+            } else if (user?.email) {
+                setCashierName(user.email.split('@')[0]);
+            }
+        });
+    }, []);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -121,8 +144,12 @@ export default function POSPage() {
         try {
             await processSale(validCart, paymentMethod, paymentMethod === "FIADO" ? selectedCustomer : undefined);
 
-            toast.success("Venta Registrada ✅", {
-                description: `Total: S/ ${total.toFixed(2)} pagado en ${paymentMethod}`,
+            setSuccessDialog({
+                open: true,
+                total: total,
+                paymentMethod: paymentMethod,
+                customerName: paymentMethod === "FIADO" ? customers.find(c => c.id === selectedCustomer)?.first_name : undefined,
+                items: [...validCart],
             });
 
             setCart([]);
@@ -137,7 +164,8 @@ export default function POSPage() {
     };
 
     return (
-        <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] bg-slate-100 overflow-hidden">
+        <>
+        <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] bg-slate-100 overflow-hidden print:hidden">
             {/* Catálogo de Productos */}
             <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-hidden">
                 <div className="flex gap-4 mb-6">
@@ -345,5 +373,53 @@ export default function POSPage() {
                 </div>
             </div>
         </div>
+
+        {/* Diálogo de Éxito */}
+        <Dialog open={successDialog.open} onOpenChange={(val) => !val && setSuccessDialog(prev => ({ ...prev, open: false }))}>
+            <DialogContent className="sm:max-w-md print:hidden">
+                <DialogHeader>
+                    <DialogTitle className="text-center text-xl text-green-600">¡Venta Exitosa!</DialogTitle>
+                    <DialogDescription className="text-center">
+                        La venta por S/ {successDialog.total.toFixed(2)} fue registrada correctamente.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="flex justify-center py-4">
+                    <div className="text-4xl font-black text-slate-900 bg-slate-100 p-4 rounded-xl border border-slate-200 shadow-inner">
+                        S/ {successDialog.total.toFixed(2)}
+                    </div>
+                </div>
+                <DialogFooter className="flex gap-2 sm:justify-between w-full">
+                    <Button
+                        variant="outline"
+                        className="w-full sm:w-auto text-slate-600"
+                        onClick={() => setSuccessDialog(prev => ({ ...prev, open: false }))}
+                    >
+                        <X className="mr-2 h-4 w-4" /> Cerrar
+                    </Button>
+                    <Button
+                        className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 font-bold"
+                        onClick={() => window.print()}
+                    >
+                        <Printer className="mr-2 h-5 w-5" /> Imprimir Ticket
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        {/* Print Area - Only visible when printing */}
+        <div className="hidden print:block absolute top-0 left-0 w-full bg-white z-[9999] p-8 !m-0">
+            {successDialog.open && (
+                <ThermalTicket
+                    store={currentStore}
+                    cashierName={cashierName}
+                    items={successDialog.items}
+                    total={successDialog.total}
+                    paymentMethod={successDialog.paymentMethod}
+                    customerName={successDialog.customerName}
+                    date={new Date()}
+                />
+            )}
+        </div>
+        </>
     );
 }
