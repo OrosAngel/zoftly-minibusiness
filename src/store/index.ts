@@ -22,6 +22,7 @@ export interface Product {
     cost: number;
     stock: number;
     min_stock: number;
+    is_favorite?: boolean;
 }
 
 export interface Category {

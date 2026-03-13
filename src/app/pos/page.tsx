@@ -5,7 +5,7 @@ import { useStore, Product, PaymentMethod } from "@/store";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Landmark, UserPlus, Package, Loader2, Printer, X } from "lucide-react";
+import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Banknote, Landmark, UserPlus, Package, Loader2, Printer, X, Star } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { ThermalTicket } from "@/components/pos/ThermalTicket";
@@ -25,6 +25,7 @@ export default function POSPage() {
     const customers = useStore((state) => state.customers);
     const processSale = useStore((state) => state.processSale);
     const currentStore = useStore((state) => state.currentStore);
+    const updateProduct = useStore((state) => state.updateProduct);
 
     const [search, setSearch] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
@@ -61,10 +62,17 @@ export default function POSPage() {
 
     const filteredProducts = useMemo(() => {
         const lowerSearch = search.toLowerCase();
-        return products.filter(p =>
+        const filtered = products.filter(p =>
             (selectedCategory === "ALL" || p.category_id === selectedCategory) &&
             (p.name.toLowerCase().includes(lowerSearch) || p.barcode.includes(search))
         );
+        
+        // Sort: Favorites first
+        return filtered.sort((a, b) => {
+            if (a.is_favorite && !b.is_favorite) return -1;
+            if (!a.is_favorite && b.is_favorite) return 1;
+            return 0;
+        });
     }, [products, search, selectedCategory]);
 
     const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
@@ -197,10 +205,23 @@ export default function POSPage() {
                         {paginatedProducts.map(product => (
                             <Card
                                 key={product.id}
-                                className={`cursor-pointer transition-all hover:shadow-md hover:border-blue-400 active:scale-95 ${product.stock <= 0 ? "opacity-50 grayscale" : ""}`}
+                                className={`relative cursor-pointer transition-all hover:shadow-md hover:border-blue-400 active:scale-95 ${product.stock <= 0 ? "opacity-50 grayscale" : ""}`}
                                 onClick={() => addToCart(product)}
                             >
-                                <CardContent className="p-4 flex flex-col items-center justify-center text-center h-32">
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="absolute top-1 right-1 h-8 w-8 z-10 hover:bg-transparent"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateProduct(product.id, { is_favorite: !product.is_favorite });
+                                    }}
+                                >
+                                    <Star 
+                                        className={`h-5 w-5 ${product.is_favorite ? 'fill-yellow-400 text-yellow-400' : 'text-slate-300 hover:text-yellow-400'}`} 
+                                    />
+                                </Button>
+                                <CardContent className="p-4 flex flex-col items-center justify-center text-center h-32 pt-6">
                                     <span className="text-sm font-semibold line-clamp-2 leading-tight">{product.name}</span>
                                     <div className="mt-2 text-blue-600 font-bold text-lg">
                                         S/ {product.price.toFixed(2)}
